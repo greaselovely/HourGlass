@@ -14,8 +14,6 @@ url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 output_path = Path.joinpath(Path.home(), "VLA")
 if not output_path.exists(): output_path.mkdir(parents=True)
 
-proxies = {'http': 'http://10.29.60.86:3128', 'https': 'http://10.29.60.86:3128'}
-
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
@@ -26,7 +24,7 @@ class ImageDownloader:
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(img_url, proxies=proxies, headers=headers, verify=False)
+        r = requests.get(img_url, headers=headers, verify=False)
         
         # Check if a previous image exists and if it's the same as the current one
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
