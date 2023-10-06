@@ -9,6 +9,13 @@ import cursor
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
+
+output_path = Path.joinpath(Path.home(), "VLA")
+if not output_path.exists(): output_path.mkdir(parents=True)
+
+proxies = {'http': 'http://10.29.60.86:3128', 'https': 'http://10.29.60.86:3128'}
+
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
@@ -16,10 +23,10 @@ class ImageDownloader:
         self.prev_image_size = None
 
     def download_image(self, img_url):
-        TodayShortDate = datetime.now().strftime("%m%d%Y")
-        TodayShortTime = datetime.now().strftime("%H%M%S")
+        today_short_date = datetime.now().strftime("%m%d%Y")
+        today_short_time = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(img_url, headers=headers, verify=False)
+        r = requests.get(img_url, proxies=proxies, headers=headers, verify=False)
         
         # Check if a previous image exists and if it's the same as the current one
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
@@ -29,7 +36,7 @@ class ImageDownloader:
 
             # Compare sizes and save the new image only if it's different
             if current_image_size != self.prev_image_size:
-                FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+                FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
                 with open(self.out_path / FileName, 'wb') as f:
                     f.write(r.content)
                 # Update the previous image filename and size for the next run
@@ -37,7 +44,7 @@ class ImageDownloader:
                 self.prev_image_size = current_image_size
         else:
             # If there's no previous image or it's different, save the current one
-            FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+            FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
             with open(self.out_path / FileName, 'wb') as f:
                 f.write(r.content)
             # Update the previous image filename and size for the next run
@@ -50,9 +57,10 @@ def clear():
 def activity(char):
     print(char, end="\r", flush=True)
 
-def images_to_video(image_folder, output_path, fps):
-    images = sorted([img for img in os.listdir(image_folder) if img.endswith(".jpg")])
-    frame = cv2.imread(os.path.join(image_folder, images[0]))
+def images_to_video(outputh_path, output_path, fps):
+    # images = sorted([img for img in os.listdir(outputh_path) if img.endswith(".jpg")])
+    images = sorted([img for img in Path.iterdir(outputh_path) if img.endswith(".jpg")])
+    frame = cv2.imread(Path.joinpath(outputh_path, images[0]))
     height, width, _ = frame.shape
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -60,7 +68,7 @@ def images_to_video(image_folder, output_path, fps):
 
     for image in images:
         print(image)
-        img_path = os.path.join(image_folder, image)
+        img_path = Path.joinpath(outputh_path, image)
         frame = cv2.imread(img_path)
         video.write(frame)
 
@@ -72,20 +80,17 @@ def main():
         clear()
         cursor.hide()
         i = 1
-        OutPath = os.path.join(os.path.expanduser('~'), "VLA")
-        downloader = ImageDownloader(OutPath)
+        downloader = ImageDownloader(output_path)
         while True:
-            downloader.download_image("https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg")
+            downloader.download_image(url)
             activity(i)
             sleep(15)
             i += 1
     except KeyboardInterrupt:
-        TodayShortDate = datetime.now().strftime("%m%d%Y")
-        home = os.path.expanduser('~')
-        image_folder = f"{home}/VLA"
-        output_path = f"{home}/VLA/VLA.{TodayShortDate}.mp4"
+        today_short_date = datetime.now().strftime("%m%d%Y")
+        video_output_path = Path.joinpath(output_path, f"VLA.{today_short_date}.mp4")
         fps = 10
-        images_to_video(image_folder, output_path, fps)
+        images_to_video(output_path, video_output_path, fps)
         cursor.show()
 
 if __name__ == "__main__":
