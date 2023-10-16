@@ -1,14 +1,6 @@
 # VLA
-Very Large Array Image Download Scripts; or whatever the 7734 else you want to download.  I <3 the VLA, so this is what it is.
+Very Large Array Image Download Scripts
 
-# Why?
+Captures the VLA image from the public webcam every 15 seconds, determines if the file size was the same as the previous one, and if it is, it does not save it (avoid duplicating images).  
 
-So I decided that while I was sitting idle at work that I'd script the download of the image from the VLA webcam.  And I started with PowerShell since it was what I had immediate access to.
-
-Once that was done, I decided to port it over to Python.  Once I did that, I found myself wanting to make it as close as I could to the PowerShell script.
-
-Once I was done with massaging both of those, I decided, yeah, Bash.  So I wrote the shell script.
-
-What I think is fascinating to see is comparing them all side by side, and even if they are simple and trivial, it gives good insight on how the syntax is between them.  I think it's worth at least checking out even for a brief moment.
-
-Have a beautiful day.
+It runs in a while loop, displaying the number of images it has attempted to save (to do may be to include the number of images not saved and the delta), until keyboard interrupt, at which time it creates an mp4 video timelapse of the images.  We do not delete the images, you'd have to do that manually.
