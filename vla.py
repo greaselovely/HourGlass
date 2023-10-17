@@ -91,6 +91,7 @@ def main():
             images_to_video(image_folder, output_path, fps)
             cursor.show()
         except:
+            clear()
             print("[!]\t Nothing to process.  Closing.")
 
 if __name__ == "__main__":
