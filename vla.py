@@ -12,8 +12,6 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
 
-proxies = {'http': 'None', 'https': 'None'}
-
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
@@ -21,11 +19,10 @@ class ImageDownloader:
         self.prev_image_size = None
 
     def download_image(self, filename):
-        print(proxies)
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(filename, proxies=proxies, headers=headers, verify=False)
+        r = requests.get(filename, headers=headers, verify=False)
 
         if len(r.content) == 0:
             print(f"\tError: file size = 0.", end='\r')
