@@ -12,6 +12,8 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
 
+proxies = {'http': 'http://10.29.60.86:3128', 'https': 'http://10.29.60.86:3128'}
+
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
@@ -19,13 +21,16 @@ class ImageDownloader:
         self.prev_image_size = None
 
     def download_image(self, filename):
+        global image_size
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(filename, headers=headers, verify=False)
+        r = requests.get(filename, proxies=proxies, headers=headers, verify=False)
 
-        if len(r.content) == 0:
-            print(f"\tError: file size = 0.", end='\r')
+        image_size = len(r.content)
+
+        if image_size == 0:
+            # print(f"\tNot Saved, file size = 0.", end='\r')
             return
 
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
@@ -45,12 +50,13 @@ class ImageDownloader:
                 f.write(r.content)
             self.prev_image_filename = FileName
             self.prev_image_size = len(r.content)
+        
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 def activity(char):
-    print(char, end="\r", flush=True)
+    print(f"{char}\tImage Size: {image_size}\t" if image_size != 0 else f"{char}\tImage Not Saved: {image_size}\t", end="\r", flush=True)
 
 def images_to_video(image_folder, output_path, fps):
     images = sorted([img for img in os.listdir(image_folder) if img.endswith(".jpg")])
@@ -94,5 +100,6 @@ def main():
             clear()
             print("[!]\t Nothing to process.  Closing.")
 
+            
 if __name__ == "__main__":
     main()
