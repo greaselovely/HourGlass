@@ -12,8 +12,6 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
 
-proxies = {'http': 'http://10.29.60.86:3128', 'https': 'http://10.29.60.86:3128'}
-
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
@@ -25,12 +23,11 @@ class ImageDownloader:
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(filename, proxies=proxies, headers=headers, verify=False)
+        r = requests.get(filename, headers=headers, verify=False)
 
         image_size = len(r.content)
 
         if image_size == 0:
-            # print(f"\tNot Saved, file size = 0.", end='\r')
             return
 
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
@@ -79,26 +76,35 @@ def main():
     try:
         clear()
         cursor.hide()
+        home = os.path.expanduser('~')
+        images_folder = os.path.join(home, "VLA/images")
+        video_folder = os.path.join(home, "VLA")
+        os.makedirs(images_folder, exist_ok=True)
+        
+        downloader = ImageDownloader(images_folder)
+
         i = 1
-        output_path = os.path.join(os.path.expanduser('~'), "VLA")
-        downloader = ImageDownloader(output_path)
         while True:
             downloader.download_image(url)
             activity(i)
             sleep(15)
             i += 1
+
     except KeyboardInterrupt:
         try:
             TodayShortDate = datetime.now().strftime("%m%d%Y")
-            home = os.path.expanduser('~')
-            image_folder = f"{home}/VLA"
-            output_path = f"{home}/VLA/VLA.{TodayShortDate}.mp4"
+            video_path = os.path.join(video_folder, f"VLA.{TodayShortDate}.mp4")
+
             fps = 10
-            images_to_video(image_folder, output_path, fps)
+            images_to_video(images_folder, video_path, fps)
             cursor.show()
-        except:
+
+        except Exception as e:
             clear()
-            print("[!]\t Nothing to process.  Closing.")
+            print(f"[!]\tError processing images to video: {e}")
+        finally:
+            cursor.show()
+
 
             
 if __name__ == "__main__":
