@@ -25,7 +25,7 @@ class ImageDownloader:
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(filename, proxies=proxies, headers=headers, verify=False)
+        r = requests.get(filename, headers=headers, verify=False)
 
         image_size = len(r.content)
 
