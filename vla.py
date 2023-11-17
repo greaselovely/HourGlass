@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import cursor
+from http.client import IncompleteRead
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -24,32 +25,43 @@ class ImageDownloader:
         global image_size
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"}
-        r = requests.get(filename, headers=headers, verify=False)
-
-        image_size = len(r.content)
-
-        if image_size == 0:
-            return
-
-        if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
-            prev_image_path = self.out_path / self.prev_image_filename
-            self.prev_image_size = prev_image_path.stat().st_size
-            current_image_size = len(r.content)
-
-            if current_image_size != self.prev_image_size:
-                FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
-                with open(self.out_path / FileName, 'wb') as f:
-                    f.write(r.content)
-                self.prev_image_filename = FileName
-                self.prev_image_size = current_image_size
-        else:
-            FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
-            with open(self.out_path / FileName, 'wb') as f:
-                f.write(r.content)
-            self.prev_image_filename = FileName
-            self.prev_image_size = len(r.content)
+        headers = {"User-Agent": "your_user_agent"}
         
+        max_retries = 3
+        for retry_count in range(max_retries):
+            try:
+                r = requests.get(filename, headers=headers, verify=False)
+                r.raise_for_status()
+
+                image_size = len(r.content)
+
+                if image_size == 0:
+                    return
+
+                if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
+                    prev_image_path = self.out_path / self.prev_image_filename
+                    self.prev_image_size = prev_image_path.stat().st_size
+                    current_image_size = len(r.content)
+
+                    if current_image_size != self.prev_image_size:
+                        FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+                        with open(self.out_path / FileName, 'wb') as f:
+                            f.write(r.content)
+                        self.prev_image_filename = FileName
+                        self.prev_image_size = current_image_size
+                else:
+                    FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+                    with open(self.out_path / FileName, 'wb') as f:
+                        f.write(r.content)
+                    self.prev_image_filename = FileName
+                    self.prev_image_size = len(r.content)
+                break
+            except IncompleteRead as e:
+                print(f"IncompleteRead Error: {e}")
+                continue
+            except requests.RequestException as e:
+                print(f"RequestException Error: {e}")
+                break
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
