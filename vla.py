@@ -12,6 +12,8 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
+user_agent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:100.0) Gecko/20100101 Firefox/100.0"
+
 
 proxies = {'http': 'http://10.29.60.103:3128', 'https': 'http://10.29.60.103:3128'}
 
@@ -25,7 +27,7 @@ class ImageDownloader:
         global image_size
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
-        headers = {"User-Agent": "your_user_agent"}
+        headers = {"User-Agent": user_agent}
         
         max_retries = 3
         for retry_count in range(max_retries):
