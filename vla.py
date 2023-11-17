@@ -1,3 +1,4 @@
+from random import choice
 import requests
 import cv2
 from time import sleep
@@ -12,7 +13,16 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
-user_agent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:100.0) Gecko/20100101 Firefox/100.0"
+import random
+
+user_agents = [
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:100.0) Gecko/20100101 Firefox/100.0",
+    "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:100.0) Gecko/20100101 Firefox/100.0"
+]
+
+
 
 
 proxies = {'http': 'http://10.29.60.103:3128', 'https': 'http://10.29.60.103:3128'}
@@ -27,7 +37,7 @@ class ImageDownloader:
         global image_size
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
-        headers = {"User-Agent": user_agent}
+        headers = {"User-Agent": choice(user_agents)}
         
         max_retries = 3
         for retry_count in range(max_retries):
