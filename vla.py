@@ -38,11 +38,11 @@ class ImageDownloader:
         TodayShortDate = datetime.now().strftime("%m%d%Y")
         TodayShortTime = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": choice(user_agents)}
-        
+
         max_retries = 3
         for retry_count in range(max_retries):
             try:
-                r = requests.get(filename, headers=headers, verify=False)
+                r = requests.get(filename, headers=headers, proxies=proxies, verify=False)
                 r.raise_for_status()
 
                 image_size = len(r.content)
