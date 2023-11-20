@@ -26,9 +26,6 @@ user_agents = [
     "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36"
 ]
 
-
-
-
 proxies = {'http': 'http://10.29.60.103:3128', 'https': 'http://10.29.60.103:3128'}
 
 class ImageDownloader:
