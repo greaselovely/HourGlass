@@ -35,8 +35,8 @@ class ImageDownloader:
 
     def download_image(self, filename):
         global image_size
-        TodayShortDate = datetime.now().strftime("%m%d%Y")
-        TodayShortTime = datetime.now().strftime("%H%M%S")
+        today_short_date = datetime.now().strftime("%m%d%Y")
+        today_short_time = datetime.now().strftime("%H%M%S")
         headers = {"User-Agent": choice(user_agents)}
 
         max_retries = 3
@@ -56,13 +56,13 @@ class ImageDownloader:
                     current_image_size = len(r.content)
 
                     if current_image_size != self.prev_image_size:
-                        FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+                        FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
                         with open(self.out_path / FileName, 'wb') as f:
                             f.write(r.content)
                         self.prev_image_filename = FileName
                         self.prev_image_size = current_image_size
                 else:
-                    FileName = f'vla.{str(TodayShortDate)}.{str(TodayShortTime)}.jpg'
+                    FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
                     with open(self.out_path / FileName, 'wb') as f:
                         f.write(r.content)
                     self.prev_image_filename = FileName
@@ -84,8 +84,8 @@ def activity(char, images_folder):
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
 
-def images_to_video(image_folder, output_path, fps):
-    images = sorted([img for img in os.listdir(image_folder) if img.endswith(".jpg")])
+def images_to_video(image_folder, output_path, fps, today_short_date):
+    images = sorted([img for img in os.listdir(image_folder) if img.endswith(".jpg") and today_short_date in img])
     frame = cv2.imread(os.path.join(image_folder, images[0]))
     height, width, _ = frame.shape
 
@@ -121,11 +121,11 @@ def main():
 
     except KeyboardInterrupt:
         try:
-            TodayShortDate = datetime.now().strftime("%m%d%Y")
-            video_path = os.path.join(video_folder, f"VLA.{TodayShortDate}.mp4")
+            today_short_date = datetime.now().strftime("%m%d%Y")
+            video_path = os.path.join(video_folder, f"VLA.{today_short_date}.mp4")
 
             fps = 10
-            images_to_video(images_folder, video_path, fps)
+            images_to_video(images_folder, video_path, fps, today_short_date)
             cursor.show()
 
         except Exception as e:
