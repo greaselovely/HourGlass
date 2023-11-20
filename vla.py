@@ -13,7 +13,6 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 webpage = "https://public.nrao.edu/vla-webcam/"
-import random
 
 user_agents = [
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:90.0) Firefox/90.0",
