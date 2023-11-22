@@ -1,20 +1,18 @@
+import os
+import cv2
+import json
+import cursor
+import requests
 from sys import exit
+from time import sleep
+from pathlib import Path
 from random import choice
 from wurlitzer import pipes
-import requests
-import cv2
-from time import sleep
 from datetime import datetime
-import os
-from pathlib import Path
-import cursor
-import json
 from http.client import IncompleteRead
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-# image_size = 0
 
 """
 TO DO
@@ -98,6 +96,7 @@ def load_config():
         config_init_starter = {"proxies" : {"http" : "", "https": ""}}
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
+         # recursion, load the config file since it wasn't found earlier
         load_config()
     except json.JSONDecodeError:
         print(f"Error decoding JSON in '{config_path}'.")
