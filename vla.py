@@ -79,6 +79,12 @@ class ImageDownloader:
             self.prev_image_size = len(r.content)
 
 def load_config():
+    """
+    Used to reference an external json file for
+    custom config items, in this first round
+    the use of proxy servers so that it wasn't
+    static in the original script
+    """
     file_name = 'config.json'
     local_path = Path(__file__).resolve().parent
     config_path = Path.joinpath(local_path, file_name)
@@ -120,6 +126,13 @@ def activity(char, images_folder):
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
 
 def make_request(url, headers, config, verify=False):
+    """
+    This was implemented so that we can make requests
+    and check for the use of proxies or not.
+    We moved the retry_count from the class to here
+    and it works to avoid connection errors that 
+    sometimes occur.
+    """
     proxies = config.get('proxies', {})
     http_proxy = proxies.get('http', '')
     https_proxy = proxies.get('https', '')
