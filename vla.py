@@ -19,9 +19,7 @@ TO DO
 -clean up function
     wait to allow the video to be reviewed
     asking if we want to remove the images
--config json file
-    used to import proxies list
-    
+
 """
 
 
