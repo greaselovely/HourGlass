@@ -90,8 +90,15 @@ def load_config():
             config = json.load(file)
         return config
     except FileNotFoundError:
-        print(f"Config file '{config_path}' not found.")
-        return None
+        """
+        We'll build an empty config.json file.
+        Edit to use proxies
+        ie: "http" : "http://127.0.0.1:8080", "https" : "http://127.0.0.1:8080"
+        """
+        config_init_starter = {"proxies" : {"http" : "", "https": ""}}
+        with open(config_path, 'w') as file:
+            json.dump(config_init_starter, file, indent=2)
+        load_config()
     except json.JSONDecodeError:
         print(f"Error decoding JSON in '{config_path}'.")
         return None
