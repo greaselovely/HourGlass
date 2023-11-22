@@ -1,3 +1,4 @@
+from sys import exit
 from random import choice
 from wurlitzer import pipes
 import requests
@@ -7,10 +8,13 @@ from datetime import datetime
 import os
 from pathlib import Path
 import cursor
+import json
 from http.client import IncompleteRead
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+# image_size = 0
 
 """
 TO DO
@@ -39,55 +43,58 @@ user_agents = [
     "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36"
 ]
 
-proxies = {'http': 'http://10.29.60.103:3128', 'https': 'http://10.29.60.103:3128'}
-
 class ImageDownloader:
     def __init__(self, out_path):
         self.out_path = Path(out_path)
         self.prev_image_filename = None
         self.prev_image_size = None
 
-    def download_image(self, filename):
+    def download_image(self, url):
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
+
         headers = {"User-Agent": choice(user_agents)}
+        r = make_request(url, headers, config, verify=False)
 
-        max_retries = 3
-        for retry_count in range(max_retries):
-            try:
-                r = requests.get(filename, headers=headers, proxies=proxies, verify=False)
-                r.raise_for_status()
+        image_size = len(r.content)
 
-                image_size = len(r.content)
+        if image_size == 0:
+            return
 
-                if image_size == 0:
-                    return
+        if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
+            prev_image_path = self.out_path / self.prev_image_filename
+            self.prev_image_size = prev_image_path.stat().st_size
+            current_image_size = len(r.content)
 
-                if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
-                    prev_image_path = self.out_path / self.prev_image_filename
-                    self.prev_image_size = prev_image_path.stat().st_size
-                    current_image_size = len(r.content)
+            if current_image_size != self.prev_image_size:
+                FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
+                with open(self.out_path / FileName, 'wb') as f:
+                    f.write(r.content)
+                self.prev_image_filename = FileName
+                self.prev_image_size = current_image_size
+        else:
+            FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
+            with open(self.out_path / FileName, 'wb') as f:
+                f.write(r.content)
+            self.prev_image_filename = FileName
+            self.prev_image_size = len(r.content)
 
-                    if current_image_size != self.prev_image_size:
-                        FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
-                        with open(self.out_path / FileName, 'wb') as f:
-                            f.write(r.content)
-                        self.prev_image_filename = FileName
-                        self.prev_image_size = current_image_size
-                else:
-                    FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
-                    with open(self.out_path / FileName, 'wb') as f:
-                        f.write(r.content)
-                    self.prev_image_filename = FileName
-                    self.prev_image_size = len(r.content)
-                break
-            except IncompleteRead as e:
-                print(f"IncompleteRead Error: {e}")
-                continue
-            except requests.RequestException as e:
-                print(f"RequestException Error: {e}")
-                break
+def load_config():
+    file_name = 'config.json'
+    local_path = Path(__file__).resolve().parent
+    config_path = Path.joinpath(local_path, file_name)
+
+    try:
+        with open(config_path, 'r') as file:
+            config = json.load(file)
+        return config
+    except FileNotFoundError:
+        print(f"Config file '{config_path}' not found.")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON in '{config_path}'.")
+        return None
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
@@ -105,6 +112,31 @@ def activity(char, images_folder):
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
+
+def make_request(url, headers, config, verify=False):
+    proxies = config.get('proxies', {})
+    http_proxy = proxies.get('http', '')
+    https_proxy = proxies.get('https', '')
+    max_retries = 3
+    for retry_count in range(max_retries):
+        try:
+            if http_proxy and https_proxy:
+                requests.get(webpage, headers=headers, proxies=proxies, verify=verify)
+                response = requests.get(url, headers=headers, proxies=proxies, verify=verify)
+                response.raise_for_status()
+            else:
+                requests.get(webpage, headers=headers, verify=verify)
+                response = requests.get(url, headers=headers, verify=verify)
+                response.raise_for_status()
+        except IncompleteRead as e:
+            print(f"IncompleteRead Error: {e}")
+            continue
+        except requests.RequestException as e:
+            print(f"RequestException Error: {e}")
+            break
+
+
+    return response
 
 def create_images_dict(images_folder, today_short_date) -> list:
     """
@@ -132,7 +164,6 @@ def create_images_dict(images_folder, today_short_date) -> list:
     valid_files = [file_path for file_path, error_message in images_dict.items() if error_message == ""]
     return valid_files
 
-
 def create_time_lapse(valid_files, output_path, fps) -> None:
     """
     Create the time lapse video. 
@@ -157,7 +188,6 @@ def create_time_lapse(valid_files, output_path, fps) -> None:
 
     return
 
-
 def main():
     try:
         clear()
@@ -165,6 +195,8 @@ def main():
         home = Path.home()
         images_folder = os.path.join(home, "VLA/images")
         video_folder = os.path.join(home, "VLA")
+        global config
+        config = load_config()
         
         os.makedirs(images_folder, exist_ok=True)
                 
