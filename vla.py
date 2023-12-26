@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import json
 import cursor
@@ -52,6 +53,8 @@ class ImageDownloader:
 
         headers = {"User-Agent": choice(user_agents)}
         r = make_request(url, headers, config, verify=False)
+        if r is None:
+            return
 
         image_size = len(r.content)
 
@@ -101,7 +104,7 @@ def load_config():
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
          # recursion, load the config file since it wasn't found earlier
-        load_config()
+        return load_config()
     except json.JSONDecodeError:
         print(f"Error decoding JSON in '{config_path}'.")
         return None
@@ -135,25 +138,25 @@ def make_request(url, headers, config, verify=False):
     http_proxy = proxies.get('http', '')
     https_proxy = proxies.get('https', '')
     max_retries = 3
-    for retry_count in range(max_retries):
+    for _ in range(max_retries):
         try:
             if http_proxy and https_proxy:
                 requests.get(webpage, headers=headers, proxies=proxies, verify=verify)
                 response = requests.get(url, headers=headers, proxies=proxies, verify=verify)
                 response.raise_for_status()
+                return response
             else:
                 requests.get(webpage, headers=headers, verify=verify)
                 response = requests.get(url, headers=headers, verify=verify)
                 response.raise_for_status()
+                return response
         except IncompleteRead as e:
             print(f"IncompleteRead Error: {e}")
-            continue
+            return None
         except requests.RequestException as e:
             print(f"RequestException Error: {e}")
-            break
-
-
-    return response
+            return None
+    return None
 
 def create_images_dict(images_folder, today_short_date) -> list:
     """
@@ -203,7 +206,7 @@ def create_time_lapse(valid_files, output_path, fps) -> None:
     cv2.destroyAllWindows()
     video.release()
 
-    return
+
 
 def main():
     try:
