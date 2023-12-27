@@ -23,13 +23,10 @@ TO DO
 
 """
 
+IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
+WEBPAGE = "https://public.nrao.edu/vla-webcam/"
 
-
-url = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
-webpage = "https://public.nrao.edu/vla-webcam/"
-stdout_log = "images.json"
-
-user_agents = [
+USER_AGENTS = [
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:90.0) Firefox/90.0",
     "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:88.0) Firefox/88.0",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:92.0) Firefox/92.0",
@@ -41,18 +38,19 @@ user_agents = [
 ]
 
 class ImageDownloader:
-    def __init__(self, out_path):
+    def __init__(self, session, out_path):
         self.out_path = Path(out_path)
+        self.session = session
         self.prev_image_filename = None
         self.prev_image_size = None
 
-    def download_image(self, url):
+    def download_image(self, session, IMAGE_URL):
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
 
-        headers = {"User-Agent": choice(user_agents)}
-        r = make_request(url, headers, config, verify=False)
+        
+        r = make_request(IMAGE_URL, verify=False)
         if r is None:
             return
 
@@ -126,7 +124,33 @@ def activity(char, images_folder):
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
 
-def make_request(url, headers, config, verify=False):
+def create_session(WEBPAGE, verify=False):
+    global config
+    proxies = config.get('proxies', {})
+    http_proxy = proxies.get('http', '')
+    https_proxy = proxies.get('https', '')
+    max_retries = 3
+    headers = {"User-Agent": choice(USER_AGENTS)}
+    for _ in range(max_retries):
+        try:
+            if http_proxy and https_proxy:
+                session = requests.get(WEBPAGE, headers=headers, proxies=proxies, verify=verify)
+                session.raise_for_status()
+                return session
+            else:
+                requests.get(WEBPAGE, headers=headers, verify=verify)
+                session = requests.get(WEBPAGE, headers=headers, verify=verify)
+                session.raise_for_status()
+                return session
+        except IncompleteRead as e:
+            print(f"IncompleteRead Error:\n{e}\nExiting.")
+            sys.exit()
+        except requests.RequestException as e:
+            print(f"RequestException Error:\n{e}\nExiting.")
+            sys.exit()
+    return None
+
+def make_request(session, verify=False):
     """
     This was implemented so that we can make requests
     and check for the use of proxies or not.
@@ -134,6 +158,7 @@ def make_request(url, headers, config, verify=False):
     and it works to avoid connection errors that 
     sometimes occur.
     """
+    global config
     proxies = config.get('proxies', {})
     http_proxy = proxies.get('http', '')
     https_proxy = proxies.get('https', '')
@@ -141,13 +166,11 @@ def make_request(url, headers, config, verify=False):
     for _ in range(max_retries):
         try:
             if http_proxy and https_proxy:
-                requests.get(webpage, headers=headers, proxies=proxies, verify=verify)
-                response = requests.get(url, headers=headers, proxies=proxies, verify=verify)
+                response = requests.get(session, proxies=proxies, verify=verify)
                 response.raise_for_status()
                 return response
             else:
-                requests.get(webpage, headers=headers, verify=verify)
-                response = requests.get(url, headers=headers, verify=verify)
+                response = requests.get(session, verify=verify)
                 response.raise_for_status()
                 return response
         except IncompleteRead as e:
@@ -213,30 +236,37 @@ def main():
         clear()
         cursor.hide()
         home = Path.home()
-        images_folder = os.path.join(home, "VLA/images")
-        video_folder = os.path.join(home, "VLA")
+        IMAGES_FOLDER = os.path.join(home, "VLA/images")
+        VIDEO_FOLDER = os.path.join(home, "VLA")
         global config
         config = load_config()
         
-        os.makedirs(images_folder, exist_ok=True)
-                
-        downloader = ImageDownloader(images_folder)
+        os.makedirs(IMAGES_FOLDER, exist_ok=True)
+        
+        session = create_session(WEBPAGE)
+        
+        downloader = ImageDownloader(session, IMAGES_FOLDER)
 
         i = 1
         while True:
-            downloader.download_image(url)
-            activity(i, images_folder)
-            sleep(15)
-            i += 1
+            try:
+                downloader.download_image(session, IMAGE_URL)
+                activity(i, IMAGES_FOLDER)
+                sleep(15)
+                i += 1
+            except requests.exceptions.RequestException as e:
+                print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
+                session = create_session(WEBPAGE)
+                downloader.download_image(session, IMAGE_URL)
 
     except KeyboardInterrupt:
         try:
             fps = 10
             today_short_date = datetime.now().strftime("%m%d%Y")
-            video_path = os.path.join(video_folder, f"VLA.{today_short_date}.mp4")
+            video_path = os.path.join(VIDEO_FOLDER, f"VLA.{today_short_date}.mp4")
             
             print("\n[i]\tValidating Images...")
-            valid_files = create_images_dict(images_folder, today_short_date)
+            valid_files = create_images_dict(IMAGES_FOLDER, today_short_date)
                         
             print("[i]\tCreating Time Lapse Video")
             create_time_lapse(valid_files, video_path, fps)
