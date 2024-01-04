@@ -10,4 +10,4 @@ We do not delete the images, you'd have to do that manually.  It only builds the
 
 `pip install -r requirements.txt`
 
-Run main.py.  You can also update your path, but by default it saves it in a subfolder called VLA under your home directory.
+Run.  You can also update your path, but by default it saves it in a subfolder called VLA under your home directory.
