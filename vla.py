@@ -3,6 +3,7 @@ import sys
 import cv2
 import json
 import cursor
+import logging
 import requests
 from sys import exit
 from time import sleep
@@ -37,6 +38,15 @@ USER_AGENTS = [
     "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36"
 ]
 
+home = Path.home()
+LOGGING_FOLDER = os.path.join(home, "VLA/logging")
+LOGGING_FILE = os.path.join(LOGGING_FOLDER, "vla_log.txt")
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
+    filename=LOGGING_FILE,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 class ImageDownloader:
     def __init__(self, session, out_path):
         self.out_path = Path(out_path)
@@ -45,6 +55,7 @@ class ImageDownloader:
         self.prev_image_size = None
 
     def download_image(self, session, IMAGE_URL):
+        logging.info(f"Download Image Func: {session}")
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
@@ -52,11 +63,13 @@ class ImageDownloader:
         
         r = make_request(IMAGE_URL, verify=False)
         if r is None:
+            logging.error(f"Image was not downloaded; r = None")
             return
 
         image_size = len(r.content)
 
         if image_size == 0:
+            logging.error(f"Image was not downloaded; zero size")
             return
 
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
@@ -92,18 +105,20 @@ def load_config():
         with open(config_path, 'r') as file:
             config = json.load(file)
         return config
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         """
         We'll build an empty config.json file.
         Edit to use proxies
         ie: "http" : "http://127.0.0.1:8080", "https" : "http://127.0.0.1:8080"
         """
+        logging.error(f"config.json problem; {e}")
         config_init_starter = {"proxies" : {"http" : "", "https": ""}}
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
          # recursion, load the config file since it wasn't found earlier
         return load_config()
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON Decode error: {e}")
         print(f"Error decoding JSON in '{config_path}'.")
         return None
 
@@ -143,9 +158,11 @@ def create_session(WEBPAGE, verify=False):
                 session.raise_for_status()
                 return session
         except IncompleteRead as e:
+            logging.error(f"Incomplete Read (create_session()): {e}")
             print(f"IncompleteRead Error:\n{e}\nExiting.")
             sys.exit()
         except requests.RequestException as e:
+            logging.error(f"Request Exception (create_session()): {e}")
             print(f"RequestException Error:\n{e}\nExiting.")
             sys.exit()
     return None
@@ -174,9 +191,11 @@ def make_request(session, verify=False):
                 response.raise_for_status()
                 return response
         except IncompleteRead as e:
+            logging.error(f"Incomplete Read (make_request()): {e}")
             print(f"IncompleteRead Error: {e}")
             return None
         except requests.RequestException as e:
+            logging.error(f"Request Exception (make_request()): {e}")
             print(f"RequestException Error: {e}")
             return None
     return None
@@ -235,13 +254,13 @@ def main():
     try:
         clear()
         cursor.hide()
-        home = Path.home()
         IMAGES_FOLDER = os.path.join(home, "VLA/images")
         VIDEO_FOLDER = os.path.join(home, "VLA")
         global config
         config = load_config()
         
         os.makedirs(IMAGES_FOLDER, exist_ok=True)
+        os.makedirs(LOGGING_FOLDER, exist_ok=True)
         
         session = create_session(WEBPAGE)
         
@@ -255,6 +274,7 @@ def main():
                 sleep(15)
                 i += 1
             except requests.exceptions.RequestException as e:
+                logging.error(f"Error: {e}")
                 print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
@@ -264,16 +284,17 @@ def main():
             fps = 10
             today_short_date = datetime.now().strftime("%m%d%Y")
             video_path = os.path.join(VIDEO_FOLDER, f"VLA.{today_short_date}.mp4")
-            
+            logging.info(f"Validating Images")
             print("\n[i]\tValidating Images...")
             valid_files = create_images_dict(IMAGES_FOLDER, today_short_date)
-                        
+            logging.info(f"Creating Time Lapse")
             print("[i]\tCreating Time Lapse Video")
             create_time_lapse(valid_files, video_path, fps)
-
+            logging.info(f"Video Saved: {video_path}")
             print(f"\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
 
         except Exception as e:
+            logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
         finally:
             cursor.show()
