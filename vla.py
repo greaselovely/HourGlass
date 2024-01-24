@@ -76,18 +76,6 @@ class ImageDownloader:
         self.prev_image_size = None
 
     def download_image(self, session, IMAGE_URL):
-        """
-        Download an image from the specified URL using the provided session.
-        Checks if the newly downloaded image is different from the previously saved image
-        by comparing file sizes. If different, the image is saved; otherwise, it's ignored.
-
-        Args:
-            session (requests.Session): The session object for HTTP requests.
-            IMAGE_URL (str): The URL from which to download the image.
-
-        Returns:
-            None: The function returns None. It saves the image to a file if it's new.
-        """
         logging.info(f"Download Image Func: {session}")
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
@@ -96,13 +84,13 @@ class ImageDownloader:
         r = make_request(IMAGE_URL, verify=False)
         if r is None:
             logging.error("Image was not downloaded; r = None")
-            return
+            return None
 
         image_size = len(r.content)
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
-            return
+            return None
 
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
             prev_image_path = self.out_path / self.prev_image_filename
@@ -110,19 +98,22 @@ class ImageDownloader:
             current_image_size = len(r.content)
 
             if current_image_size != self.prev_image_size:
-                FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
+                FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
                 with open(self.out_path / FileName, 'wb') as f:
                     f.write(r.content)
                 self.prev_image_filename = FileName
                 self.prev_image_size = current_image_size
+                return image_size  # Image saved, return size
             else:
                 logging.error("Image was not saved; same size as previous")
+                return None  # Image not saved due to being the same size
         else:
-            FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
+            FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
             with open(self.out_path / FileName, 'wb') as f:
                 f.write(r.content)
             self.prev_image_filename = FileName
             self.prev_image_size = len(r.content)
+            return image_size  # Image saved, return size
 
 def load_config():
     """
@@ -169,7 +160,7 @@ def clear():
     """
     os.system("cls" if os.name == "nt" else "clear")
 
-def activity(char, images_folder):
+def activity(char, images_folder, image_size):
     """
     Displays the current status of the image downloading activity in the terminal.
 
@@ -184,11 +175,10 @@ def activity(char, images_folder):
     Returns:
         None: This function does not return anything. It only prints to stdout.
     """
-
     clear()
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
-    print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
+    print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
 def create_session(WEBPAGE, verify=False):
     """
@@ -358,7 +348,6 @@ def main():
         
         os.makedirs(IMAGES_FOLDER, exist_ok=True)
         
-        
         session = create_session(WEBPAGE)
         
         downloader = ImageDownloader(session, IMAGES_FOLDER)
@@ -366,8 +355,12 @@ def main():
         i = 1
         while True:
             try:
-                downloader.download_image(session, IMAGE_URL)
-                activity(i, IMAGES_FOLDER)
+                image_size = downloader.download_image(session, IMAGE_URL)
+                if image_size is not None:  # Check if image_size is not None
+                    activity(i, IMAGES_FOLDER, image_size)
+                else:
+                    clear()
+                    print(f"Error downloading image at iteration: {i}")
                 sleep(15)
                 i += 1
             except requests.exceptions.RequestException as e:
@@ -387,7 +380,7 @@ def main():
             logging.info(f"Creating Time Lapse")
             print("[i]\tCreating Time Lapse Video")
             create_time_lapse(valid_files, video_path, fps)
-            logging.info(f"Video Saved: {video_path}")
+            logging.info(f"Time Lapse Saved: {video_path}")
             print(f"\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
 
         except Exception as e:
