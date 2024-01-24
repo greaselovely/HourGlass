@@ -40,6 +40,7 @@ USER_AGENTS = [
 
 home = Path.home()
 LOGGING_FOLDER = os.path.join(home, "VLA/logging")
+os.makedirs(LOGGING_FOLDER, exist_ok=True)
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, "vla_log.txt")
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
@@ -260,7 +261,7 @@ def main():
         config = load_config()
         
         os.makedirs(IMAGES_FOLDER, exist_ok=True)
-        os.makedirs(LOGGING_FOLDER, exist_ok=True)
+        
         
         session = create_session(WEBPAGE)
         
