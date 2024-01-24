@@ -49,28 +49,59 @@ logging.basicConfig(
 )
 
 class ImageDownloader:
+    """
+    A class to download images from a specified URL and manage the download process.
+
+    This class handles downloading images, checking for duplicates based on file size,
+    and saving new images to a specified output path.
+
+    Attributes:
+        out_path (Path): The file path where images will be saved.
+        session (requests.Session): The session object used for HTTP requests.
+        prev_image_filename (str): The filename of the previously downloaded image.
+        prev_image_size (int): The file size of the previously downloaded image.
+    """
+
     def __init__(self, session, out_path):
+        """
+        Initialize the ImageDownloader class with a session and output path.
+
+        Args:
+            session (requests.Session): The session object for HTTP requests.
+            out_path (str): The file path where images will be saved.
+        """
         self.out_path = Path(out_path)
         self.session = session
         self.prev_image_filename = None
         self.prev_image_size = None
 
     def download_image(self, session, IMAGE_URL):
+        """
+        Download an image from the specified URL using the provided session.
+        Checks if the newly downloaded image is different from the previously saved image
+        by comparing file sizes. If different, the image is saved; otherwise, it's ignored.
+
+        Args:
+            session (requests.Session): The session object for HTTP requests.
+            IMAGE_URL (str): The URL from which to download the image.
+
+        Returns:
+            None: The function returns None. It saves the image to a file if it's new.
+        """
         logging.info(f"Download Image Func: {session}")
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
-
         
         r = make_request(IMAGE_URL, verify=False)
         if r is None:
-            logging.error(f"Image was not downloaded; r = None")
+            logging.error("Image was not downloaded; r = None")
             return
 
         image_size = len(r.content)
 
         if image_size == 0:
-            logging.error(f"Image was not downloaded; zero size")
+            logging.error("Image was not downloaded; zero size")
             return
 
         if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
@@ -84,6 +115,8 @@ class ImageDownloader:
                     f.write(r.content)
                 self.prev_image_filename = FileName
                 self.prev_image_size = current_image_size
+            else:
+                logging.error("Image was not saved; same size as previous")
         else:
             FileName = f'vla.{str(today_short_date)}.{str(today_short_time)}.jpg'
             with open(self.out_path / FileName, 'wb') as f:
@@ -93,10 +126,14 @@ class ImageDownloader:
 
 def load_config():
     """
-    Used to reference an external json file for
-    custom config items, in this first round
-    the use of proxy servers so that it wasn't
-    static in the original script
+    Loads configuration settings from a 'config.json' file.
+
+    This function tries to open and read a 'config.json' file located in the same directory as the script.
+    If the file is not found, it creates a new one with default proxy settings.
+    If the file is found but contains invalid JSON, an error is logged and None is returned.
+
+    Returns:
+        dict or None: A dictionary with configuration settings if successful, None otherwise.
     """
     file_name = 'config.json'
     local_path = Path(__file__).resolve().parent
@@ -124,23 +161,53 @@ def load_config():
         return None
 
 def clear():
+    """
+    Clears the terminal screen.
+
+    This function checks the operating system and uses the appropriate command to clear the terminal screen.
+    It uses 'cls' for Windows (nt) and 'clear' for other operating systems.
+    """
     os.system("cls" if os.name == "nt" else "clear")
 
 def activity(char, images_folder):
     """
-    Just prints to stdout the iterator number 
-    (resets if the script starts over), 
-    the image count in the images directory,
-    and the current file size.  This is referenced 
-    so that if the file size doesn't change, the 
-    image isn't saved in the class above.
+    Displays the current status of the image downloading activity in the terminal.
+
+    This function is called to print the current iteration number, the total count of 
+    JPEG images in the specified folder, and the size of the last downloaded image. 
+    If the last downloaded image size is zero, it indicates that the image was not saved.
+
+    Args:
+        char (int): The current iteration number of the downloading loop.
+        images_folder (str): Path to the folder where images are being saved.
+
+    Returns:
+        None: This function does not return anything. It only prints to stdout.
     """
+
     clear()
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n" if image_size != 0 else f"{char}\nImage Not Saved: {image_size}\n", end="\r", flush=True)
 
 def create_session(WEBPAGE, verify=False):
+    """
+    Creates and returns a new session for making HTTP requests.
+
+    This function initializes a session with headers including a randomly chosen user agent.
+    It attempts to connect to the specified webpage up to a maximum number of retries.
+    If proxies are configured, it uses them for the connection.
+
+    Args:
+        WEBPAGE (str): The URL to which the session will connect.
+        verify (bool): Flag to determine whether to verify the server's TLS certificate.
+
+    Returns:
+        requests.Session or None: A session object if the connection is successful, None otherwise.
+
+    Raises:
+        SystemExit: If an IncompleteRead or RequestException error occurs during session creation.
+    """
     global config
     proxies = config.get('proxies', {})
     http_proxy = proxies.get('http', '')
@@ -170,11 +237,19 @@ def create_session(WEBPAGE, verify=False):
 
 def make_request(session, verify=False):
     """
-    This was implemented so that we can make requests
-    and check for the use of proxies or not.
-    We moved the retry_count from the class to here
-    and it works to avoid connection errors that 
-    sometimes occur.
+    Makes an HTTP request using the specified session and handles retries.
+
+    This function attempts to make a GET request using the given session. 
+    If proxies are configured, they are used in the request. The function retries 
+    the request up to a maximum number of times in case of connection errors.
+
+    Args:
+        session (requests.Session): The session object to be used for making the request.
+        verify (bool): Flag to determine whether to verify the server's TLS certificate.
+
+    Returns:
+        requests.Response or None: The response object if the request is successful, 
+                                   None if there are connection errors or exceptions.
     """
     global config
     proxies = config.get('proxies', {})
@@ -203,15 +278,18 @@ def make_request(session, verify=False):
 
 def create_images_dict(images_folder, today_short_date) -> list:
     """
-    We are creating a dict of all of todays images 
-    so that we don't include files from yesterday or 
-    other days into the time lapse.  We process each image
-    with cv2, and capture the output using wurlitzer pipes
-    and send that to a dictionary.  If cv2 detects an error
-    in the image processing, it will send to stderr and is
-    entered into the dict as a value that we will ignore 
-    when we iterate over the dict at the end and return a list
-    of paths to each image
+    Creates a dictionary of image file paths from the specified folder, filtered by the provided date.
+
+    This function filters images by the date included in their filenames, processes each image using cv2 
+    to check for errors, and compiles a list of valid image file paths. It uses wurlitzer pipes to capture 
+    any error messages from cv2. Images with errors detected by cv2 are excluded from the returned list.
+
+    Args:
+        images_folder (str): The directory where the images are stored.
+        today_short_date (str): The date string used to filter images relevant to the current day.
+
+    Returns:
+        list: A list of valid image file paths, excluding any that cv2 identifies as having errors.
     """
     images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg") and today_short_date in img]) 
     images_dict = {}
@@ -229,12 +307,21 @@ def create_images_dict(images_folder, today_short_date) -> list:
 
 def create_time_lapse(valid_files, output_path, fps) -> None:
     """
-    Create the time lapse video. 
-    Grab the first file, create the frame, unpack it,
-    and then iterate over the valid images (that aren't corrupt)
-    and write each frame.
+    Creates a time-lapse video from a list of valid image files.
+
+    This function reads the first image file to determine the frame size for the video. 
+    It then iterates over all the valid image files, adding each as a frame to the video. 
+    The function uses OpenCV to handle image reading and video writing.
+
+    Args:
+        valid_files (list): A list of file paths for the images to be included in the time-lapse.
+        output_path (str): The file path where the generated time-lapse video will be saved.
+        fps (int): The frames per second rate for the time-lapse video.
+
+    Returns:
+        None: This function does not return anything. It saves the time-lapse video at the specified output path.
     """
-    
+
     frame = cv2.imread(valid_files[0])  # Read the frame shape from the first file in the list.
     height, width, _ = frame.shape  # unpack the frame shape
 
@@ -252,6 +339,15 @@ def create_time_lapse(valid_files, output_path, fps) -> None:
 
 
 def main():
+    """
+    The main function of the script. It orchestrates the process of downloading images,
+    creating a time-lapse video, and handling exceptions.
+
+    This function sets up the necessary folders, initializes a session, and continuously
+    downloads images at a set interval. In case of a keyboard interrupt, it proceeds to 
+    validate the downloaded images and create a time-lapse video from them. Any errors 
+    encountered during image processing or video creation are logged and displayed.
+    """
     try:
         clear()
         cursor.hide()
