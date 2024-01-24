@@ -274,7 +274,7 @@ def main():
                 sleep(15)
                 i += 1
             except requests.exceptions.RequestException as e:
-                logging.error(f"Error: {e}")
+                logging.error(f"Session timeout or error detect, re-establishing session: {e}")
                 print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
