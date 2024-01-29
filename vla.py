@@ -375,7 +375,10 @@ def main():
             try:
                 SECONDS = choice(range(15,22))
                 image_size = downloader.download_image(session, IMAGE_URL)
-                if image_size is not None:
+                # If we don't save the image because the hash is the same
+                # then the image_size is None.  This is strictly console
+                # notification and probably should be deprecated.
+                if image_size is not None: 
                     activity(i, IMAGES_FOLDER, image_size)
                 else:
                     clear()
