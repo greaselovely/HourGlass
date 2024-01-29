@@ -24,7 +24,7 @@ TO DO
     asking if we want to remove the images
 
 """
-SECONDS = 16
+
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
 
@@ -112,7 +112,7 @@ class ImageDownloader:
                     f.write(r.content)
                 self.prev_image_filename = FileName
                 self.prev_image_size = current_image_size
-                print(f"New Image Hash: {self.prev_image_hash}")
+                # print(f"New Image Hash: {self.prev_image_hash}")
                 return image_size  # Image saved, return size
             else:
                 logging.error(f"Image was not saved; same hash as previous {self.prev_image_hash}")
@@ -373,13 +373,15 @@ def main():
         i = 1
         while True:
             try:
+                SECONDS = choice(range(15,22))
                 image_size = downloader.download_image(session, IMAGE_URL)
-                if image_size is not None:  # Check if image_size is not None
+                if image_size is not None:
                     activity(i, IMAGES_FOLDER, image_size)
                 else:
                     clear()
                     print(f"Error downloading image at iteration: {i}")
                 sleep(SECONDS)
+                
                 i += 1
             except requests.exceptions.RequestException as e:
                 logging.error(f"Session timeout or error detect, re-establishing session: {e}")
