@@ -3,6 +3,7 @@ import sys
 import cv2
 import json
 import cursor
+import hashlib
 import logging
 import requests
 from sys import exit
@@ -74,6 +75,10 @@ class ImageDownloader:
         self.session = session
         self.prev_image_filename = None
         self.prev_image_size = None
+        self.prev_image_hash = None
+    
+    def compute_md5(self, image_content):
+        return hashlib.md5(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
         logging.info(f"Download Image Func: {session}")
@@ -87,6 +92,7 @@ class ImageDownloader:
             return None
 
         image_size = len(r.content)
+        image_hash = self.compute_md5(r.content)
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
@@ -97,15 +103,19 @@ class ImageDownloader:
             self.prev_image_size = prev_image_path.stat().st_size
             current_image_size = len(r.content)
 
-            if current_image_size != self.prev_image_size:
+            with open(prev_image_path, 'rb') as f:
+                prev_image_hash = self.compute_md5(f.read())
+
+            if image_hash != prev_image_hash:
                 FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
                 with open(self.out_path / FileName, 'wb') as f:
                     f.write(r.content)
                 self.prev_image_filename = FileName
                 self.prev_image_size = current_image_size
+                print(f"New Image Hash: {self.prev_image_hash}")
                 return image_size  # Image saved, return size
             else:
-                logging.error("Image was not saved; same size as previous")
+                logging.error(f"Image was not saved; same hash as previous {self.prev_image_hash}")
                 return None  # Image not saved due to being the same size
         else:
             FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
@@ -113,6 +123,7 @@ class ImageDownloader:
                 f.write(r.content)
             self.prev_image_filename = FileName
             self.prev_image_size = len(r.content)
+            self.prev_image_hash = image_hash
             return image_size  # Image saved, return size
 
 def load_config():
@@ -203,7 +214,12 @@ def create_session(WEBPAGE, verify=False):
     http_proxy = proxies.get('http', '')
     https_proxy = proxies.get('https', '')
     max_retries = 3
-    headers = {"User-Agent": choice(USER_AGENTS)}
+    headers = {
+        "User-Agent": choice(USER_AGENTS),
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
     for _ in range(max_retries):
         try:
             if http_proxy and https_proxy:
