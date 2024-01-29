@@ -24,7 +24,7 @@ TO DO
     asking if we want to remove the images
 
 """
-
+SECONDS = 16
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
 
@@ -225,11 +225,13 @@ def create_session(WEBPAGE, verify=False):
             if http_proxy and https_proxy:
                 session = requests.get(WEBPAGE, headers=headers, proxies=proxies, verify=verify)
                 session.raise_for_status()
+                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
                 return session
             else:
                 requests.get(WEBPAGE, headers=headers, verify=verify)
                 session = requests.get(WEBPAGE, headers=headers, verify=verify)
                 session.raise_for_status()
+                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
                 return session
         except IncompleteRead as e:
             logging.error(f"Incomplete Read (create_session()): {e}")
@@ -377,7 +379,7 @@ def main():
                 else:
                     clear()
                     print(f"Error downloading image at iteration: {i}")
-                sleep(15)
+                sleep(SECONDS)
                 i += 1
             except requests.exceptions.RequestException as e:
                 logging.error(f"Session timeout or error detect, re-establishing session: {e}")
