@@ -299,7 +299,7 @@ def create_images_dict(images_folder, today_short_date) -> list:
     Returns:
         list: A list of valid image file paths, excluding any that cv2 identifies as having errors.
     """
-    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg") and today_short_date in img]) 
+    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")]) 
     images_dict = {}
 
     for image in images:
