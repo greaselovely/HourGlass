@@ -6,6 +6,7 @@ import cursor
 import hashlib
 import logging
 import requests
+import numpy as np
 from sys import exit
 from time import sleep
 from pathlib import Path
@@ -313,38 +314,50 @@ def create_images_dict(images_folder, today_short_date) -> list:
     valid_files = [file_path for file_path, error_message in images_dict.items() if error_message == ""]
     return valid_files
 
-def create_time_lapse(valid_files, output_path, fps) -> None:
+def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_black_seconds=3) -> None:
     """
-    Creates a time-lapse video from a list of valid image files.
-
-    This function reads the first image file to determine the frame size for the video. 
-    It then iterates over all the valid image files, adding each as a frame to the video. 
-    The function uses OpenCV to handle image reading and video writing.
+    Creates a time-lapse video from a series of images, featuring a crossfade to black effect towards the end,
+    followed by a period of black screen. This function is designed to create smooth transitions between images and
+    to conclude the video with a visually appealing fade out and silent reflection period.
 
     Args:
-        valid_files (list): A list of file paths for the images to be included in the time-lapse.
-        output_path (str): The file path where the generated time-lapse video will be saved.
-        fps (int): The frames per second rate for the time-lapse video.
+        valid_files (list): A list of paths to image files. These images are used to create the time-lapse video. The images should be in the order they are to appear in the video.
+        output_path (str): The path where the time-lapse video will be saved. This should include the filename and the desired file extension (e.g., '.mp4').
+        fps (int): Frames per second for the video. This determines how quickly the images in the time-lapse will transition.
+        crossfade_seconds (int, optional): The duration, in seconds, of the crossfade to black effect at the end of the video. This provides a smooth transition to a black screen. Defaults to 3 seconds.
+        end_black_seconds (int, optional): The duration, in seconds, for which a black screen is shown at the end of the video. This can serve as a moment of pause or reflection after the conclusion of the time-lapse. Defaults to 3 seconds.
 
-    Returns:
-        None: This function does not return anything. It saves the time-lapse video at the specified output path.
+    This function uses OpenCV to read the input images, apply the crossfade effect, and encode the final video. It is important to ensure that all images are of the same dimensions and format for a consistent and error-free video compilation.
     """
 
-    frame = cv2.imread(valid_files[0])  # Read the frame shape from the first file in the list.
-    height, width, _ = frame.shape  # unpack the frame shape
+    frame = cv2.imread(valid_files[0])
+    height, width, _ = frame.shape
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     video = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
+    total_frames = len(valid_files)
+    fade_frames = fps * crossfade_seconds  # Calculate fade frames based on crossfade duration
+    fade_start_frame = total_frames - fade_frames  # Start fading towards the end
+
     for n, image in enumerate(valid_files):
         print(f"[i]\t{n}", end='\r')
         frame = cv2.imread(image)
+
+        # Apply dynamic fading if within the fade period
+        if n >= fade_start_frame:
+            fade_ratio = (n - fade_start_frame) / fade_frames
+            frame = cv2.addWeighted(frame, 1 - fade_ratio, np.zeros_like(frame), fade_ratio, 0)
+
         video.write(frame)
 
-    cv2.destroyAllWindows()
+    # Add black frames based on the end black screen duration
+    black_frame = np.zeros_like(frame)
+    for _ in range(fps * end_black_seconds):
+        video.write(black_frame)
+
     video.release()
-
-
+    cv2.destroyAllWindows()
 
 def main():
     """
@@ -411,7 +424,6 @@ def main():
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
         finally:
             cursor.show()
-
 
             
 if __name__ == "__main__":
