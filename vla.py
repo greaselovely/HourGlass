@@ -316,9 +316,9 @@ def create_images_dict(images_folder, today_short_date) -> list:
 
 def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_black_seconds=3) -> None:
     """
-    Creates a time-lapse video from a series of images, featuring a crossfade to black effect towards the end,
-    followed by a period of black screen. This function is designed to create smooth transitions between images and
-    to conclude the video with a visually appealing fade out and silent reflection period.
+    Creates a time-lapse video from a series of images, featuring a fade-in effect from black at the beginning, a crossfade to black effect towards the end,
+    followed by a period of black screen. This function is designed for smooth transitions between images, a visually appealing introduction and conclusion,
+    and to enhance viewer engagement.
 
     Args:
         valid_files (list): A list of paths to image files. These images are used to create the time-lapse video. The images should be in the order they are to appear in the video.
@@ -327,9 +327,8 @@ def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_bl
         crossfade_seconds (int, optional): The duration, in seconds, of the crossfade to black effect at the end of the video. This provides a smooth transition to a black screen. Defaults to 3 seconds.
         end_black_seconds (int, optional): The duration, in seconds, for which a black screen is shown at the end of the video. This can serve as a moment of pause or reflection after the conclusion of the time-lapse. Defaults to 3 seconds.
 
-    This function uses OpenCV to read the input images, apply the crossfade effect, and encode the final video. It is important to ensure that all images are of the same dimensions and format for a consistent and error-free video compilation.
+    The function uses OpenCV to read the input images, apply the fade-in and fade-out effects, and encode the final video. It keeps the user informed of its progress through print statements, ensuring transparency in processing times and stages.
     """
-
     frame = cv2.imread(valid_files[0])
     height, width, _ = frame.shape
 
@@ -337,22 +336,36 @@ def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_bl
     video = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     total_frames = len(valid_files)
-    fade_frames = fps * crossfade_seconds  # Calculate fade frames based on crossfade duration
-    fade_start_frame = total_frames - fade_frames  # Start fading towards the end
+    fade_frames = fps * crossfade_seconds
+    fade_in_end_frame = fade_frames  # End of fade-in period
+    fade_out_start_frame = total_frames - fade_frames  # Start of fade-out period
 
-    for n, image in enumerate(valid_files):
-        print(f"[i]\t{n}", end='\r')
-        frame = cv2.imread(image)
-
-        # Apply dynamic fading if within the fade period
-        if n >= fade_start_frame:
-            fade_ratio = (n - fade_start_frame) / fade_frames
-            frame = cv2.addWeighted(frame, 1 - fade_ratio, np.zeros_like(frame), fade_ratio, 0)
-
-        video.write(frame)
-
-    # Add black frames based on the end black screen duration
     black_frame = np.zeros_like(frame)
+
+    # Apply fade-in effect at the beginning
+    for n in range(fade_in_end_frame):
+        print(f"[i]\t{n}", end='\r')
+        fade_ratio = n / fade_frames
+        if n < len(valid_files):  # Ensure there are enough images for the fade-in
+            frame = cv2.imread(valid_files[n])
+        blended_frame = cv2.addWeighted(black_frame, 1 - fade_ratio, frame, fade_ratio, 0)
+        video.write(blended_frame)
+
+    # Process middle frames without fading
+    for n in range(fade_in_end_frame, fade_out_start_frame):
+        if n < len(valid_files):  # Check to avoid index out of range
+            frame = cv2.imread(valid_files[n])
+            video.write(frame)
+
+    # Apply dynamic fading if within the fade-out period
+    for n in range(fade_out_start_frame, total_frames):
+        if n < len(valid_files):  # Continue checking to avoid index out of range
+            frame = cv2.imread(valid_files[n])
+            fade_ratio = (n - fade_out_start_frame) / fade_frames
+            frame = cv2.addWeighted(frame, 1 - fade_ratio, black_frame, fade_ratio, 0)
+            video.write(frame)
+
+    # Add black frames for the end black screen duration
     for _ in range(fps * end_black_seconds):
         video.write(black_frame)
 
@@ -424,7 +437,6 @@ def main():
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
         finally:
             cursor.show()
-
-            
+         
 if __name__ == "__main__":
     main()
