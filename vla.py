@@ -82,7 +82,6 @@ class ImageDownloader:
         return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-        logging.info(f"Download Image Func: {session}")
         global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
@@ -94,6 +93,8 @@ class ImageDownloader:
 
         image_size = len(r.content)
         image_hash = self.compute_hash(r.content)
+
+        logging.info(f"Download Image Func: {session}. Hash {image_hash}")
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
