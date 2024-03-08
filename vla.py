@@ -372,9 +372,7 @@ def main():
                 else:
                     clear()
                     print(f"Error downloading image at iteration: {i}")
-                logging.info(f"Sleeping for {SECONDS} seconds.")
                 sleep(SECONDS)
-                logging.info(f"Back from my nap")
                 
                 i += 1
             except requests.exceptions.RequestException as e:
