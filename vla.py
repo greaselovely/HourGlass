@@ -78,8 +78,8 @@ class ImageDownloader:
         self.prev_image_size = None
         self.prev_image_hash = None
     
-    def compute_md5(self, image_content):
-        return hashlib.md5(image_content).hexdigest()
+    def compute_hash(self, image_content):
+        return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
         logging.info(f"Download Image Func: {session}")
@@ -93,7 +93,7 @@ class ImageDownloader:
             return None
 
         image_size = len(r.content)
-        image_hash = self.compute_md5(r.content)
+        image_hash = self.compute_hash(r.content)
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
@@ -105,7 +105,7 @@ class ImageDownloader:
             current_image_size = len(r.content)
 
             with open(prev_image_path, 'rb') as f:
-                prev_image_hash = self.compute_md5(f.read())
+                prev_image_hash = self.compute_hash(f.read())
 
             if image_hash != prev_image_hash:
                 FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
