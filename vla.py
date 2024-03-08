@@ -1,5 +1,4 @@
 import os
-import sys
 import cv2
 import json
 import cursor
@@ -50,83 +49,64 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+
 class ImageDownloader:
     """
-    A class to download images from a specified URL and manage the download process.
-
-    This class handles downloading images, checking for duplicates based on file size,
-    and saving new images to a specified output path.
-
-    Attributes:
-        out_path (Path): The file path where images will be saved.
-        session (requests.Session): The session object used for HTTP requests.
-        prev_image_filename (str): The filename of the previously downloaded image.
-        prev_image_size (int): The file size of the previously downloaded image.
+    Class to handle downloading images and managing hash collisions, while explicitly using the session passed to each download attempt.
     """
 
     def __init__(self, session, out_path):
-        """
-        Initialize the ImageDownloader class with a session and output path.
-
-        Args:
-            session (requests.Session): The session object for HTTP requests.
-            out_path (str): The file path where images will be saved.
-        """
         self.out_path = Path(out_path)
+        self.hash_collisions_path = self.out_path / "hash_collisions"  # Directory for hash collisions
         self.session = session
         self.prev_image_filename = None
         self.prev_image_size = None
         self.prev_image_hash = None
-    
+        # self.hash_collisions_path.mkdir(exist_ok=True)  # Ensure the directory exists
+
     def compute_hash(self, image_content):
         return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-        global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
         
-        r = make_request(IMAGE_URL, verify=False)
-        if r is None:
-            logging.error("Image was not downloaded; r = None")
+        r = session.get(IMAGE_URL, verify=False)
+        if r is None or r.status_code != 200:
+            logging.error("Image was not downloaded; r = None or not 200")
             return None
 
-        image_size = len(r.content)
-        image_hash = self.compute_hash(r.content)
+        # logging.info(f"Server response headers: {r.headers}")
 
-        logging.info(f"Download Image Func: {session}. Hash {image_hash}")
+        image_content = r.content
+        image_size = len(image_content)
+        image_hash = self.compute_hash(image_content)
+
+        logging.info(f"Download Image Func: {r.status_code}. Hash {image_hash}")
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
             return None
 
-        if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
-            prev_image_path = self.out_path / self.prev_image_filename
-            self.prev_image_size = prev_image_path.stat().st_size
-            current_image_size = len(r.content)
+        if self.prev_image_hash == image_hash:
+            """
+            uncomment if you want to inspect the images by hand.  
+            Also uncomment the hash_collision_path above under __init__.
+            """
+            # FileName = f'{today_short_date}_{today_short_time}.jpg'
+            # collision_file_path = self.hash_collisions_path / FileName
+            # with open(collision_file_path, 'wb') as f:
+            #     f.write(image_content)
+            logging.error(f"Image was not saved; same hash as previous {image_hash}")
+            return None
 
-            with open(prev_image_path, 'rb') as f:
-                prev_image_hash = self.compute_hash(f.read())
-
-            if image_hash != prev_image_hash:
-                FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-                with open(self.out_path / FileName, 'wb') as f:
-                    f.write(r.content)
-                self.prev_image_filename = FileName
-                self.prev_image_size = current_image_size
-                # print(f"New Image Hash: {self.prev_image_hash}")
-                return image_size  # Image saved, return size
-            else:
-                logging.error(f"Image was not saved; same hash as previous {self.prev_image_hash}")
-                return None  # Image not saved due to being the same size
-        else:
-            FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-            with open(self.out_path / FileName, 'wb') as f:
-                f.write(r.content)
-            self.prev_image_filename = FileName
-            self.prev_image_size = len(r.content)
-            self.prev_image_hash = image_hash
-            return image_size  # Image saved, return size
+        FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
+        with open(self.out_path / FileName, 'wb') as f:
+            f.write(image_content)
+        self.prev_image_filename = FileName
+        self.prev_image_size = image_size
+        self.prev_image_hash = image_hash  # Ensure this is updated only here
+        return image_size  # Image saved, return size
 
 def load_config():
     """
@@ -193,57 +173,39 @@ def activity(char, images_folder, image_size):
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
-def create_session(WEBPAGE, verify=False):
+def create_session(webpage, verify=False):
     """
-    Creates and returns a new session for making HTTP requests.
-
-    This function initializes a session with headers including a randomly chosen user agent.
-    It attempts to connect to the specified webpage up to a maximum number of retries.
-    If proxies are configured, it uses them for the connection.
-
+    Initializes a session and verifies its ability to connect to a given webpage.
+    
     Args:
-        WEBPAGE (str): The URL to which the session will connect.
-        verify (bool): Flag to determine whether to verify the server's TLS certificate.
+        webpage (str): The URL to test the session's connectivity.
+        verify (bool): Whether to verify the SSL certificate.
 
     Returns:
-        requests.Session or None: A session object if the connection is successful, None otherwise.
-
-    Raises:
-        SystemExit: If an IncompleteRead or RequestException error occurs during session creation.
+        A requests.Session object if successful, None otherwise.
     """
-    global config
-    proxies = config.get('proxies', {})
-    http_proxy = proxies.get('http', '')
-    https_proxy = proxies.get('https', '')
-    max_retries = 3
-    headers = {
+    session = requests.Session()
+    session.headers.update({
         "User-Agent": choice(USER_AGENTS),
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0"
-    }
-    for _ in range(max_retries):
-        try:
-            if http_proxy and https_proxy:
-                session = requests.get(WEBPAGE, headers=headers, proxies=proxies, verify=verify)
-                session.raise_for_status()
-                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
-                return session
-            else:
-                requests.get(WEBPAGE, headers=headers, verify=verify)
-                session = requests.get(WEBPAGE, headers=headers, verify=verify)
-                session.raise_for_status()
-                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
-                return session
-        except IncompleteRead as e:
-            logging.error(f"Incomplete Read (create_session()): {e}")
-            print(f"IncompleteRead Error:\n{e}\nExiting.")
-            sys.exit()
-        except requests.RequestException as e:
-            logging.error(f"Request Exception (create_session()): {e}")
-            print(f"RequestException Error:\n{e}\nExiting.")
-            sys.exit()
-    return None
+    })
+
+    # Configure proxies if they are set in config
+    proxies = config.get('proxies', {})
+    if proxies:
+        session.proxies.update(proxies)
+
+    # Perform an initial request to verify connectivity
+    try:
+        response = session.get(webpage, verify=verify, timeout=10)
+        response.raise_for_status()  # Raises a HTTPError for bad responses
+        logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
+        return session
+    except (requests.RequestException, requests.HTTPError) as e:
+        logging.error(f"Failed to connect to {webpage} with session: {e}")
+        return None
 
 def make_request(session, verify=False):
     """
