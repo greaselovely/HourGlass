@@ -316,6 +316,7 @@ def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_bl
 
     # Process middle frames without fading
     for n in range(fade_in_end_frame, fade_out_start_frame):
+        print(f"[i]\t{n}", end='\r')
         if n < len(valid_files):  # Check to avoid index out of range
             frame = cv2.imread(valid_files[n])
             video.write(frame)
@@ -323,6 +324,7 @@ def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_bl
     # Apply dynamic fading if within the fade-out period
     for n in range(fade_out_start_frame, total_frames):
         if n < len(valid_files):  # Continue checking to avoid index out of range
+            print(f"[i]\t{n}", end='\r')
             frame = cv2.imread(valid_files[n])
             fade_ratio = (n - fade_out_start_frame) / fade_frames
             frame = cv2.addWeighted(frame, 1 - fade_ratio, black_frame, fade_ratio, 0)
