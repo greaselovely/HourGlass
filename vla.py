@@ -266,7 +266,8 @@ def create_images_dict(images_folder, today_short_date) -> list:
     images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")]) 
     images_dict = {}
 
-    for image in images:
+    for n, image in enumerate(images):
+        print(f"[i]\t{n}", end='\r')
         full_image = os.path.join(images_folder, image)
         with pipes() as (out, err):
             cv2.imread(full_image)
