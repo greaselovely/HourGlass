@@ -1,6 +1,8 @@
 *.json
 rename.py
 dups.py
+sun.py
+aps.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
