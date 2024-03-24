@@ -1,11 +1,11 @@
 import os
-import sys
 import cv2
 import json
 import cursor
 import hashlib
 import logging
 import requests
+import numpy as np
 from sys import exit
 from time import sleep
 from pathlib import Path
@@ -13,6 +13,8 @@ from random import choice
 from wurlitzer import pipes
 from datetime import datetime
 from http.client import IncompleteRead
+
+from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -44,87 +46,68 @@ LOGGING_FOLDER = os.path.join(home, "VLA/logging")
 os.makedirs(LOGGING_FOLDER, exist_ok=True)
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, "vla_log.txt")
 logging.basicConfig(
-    level=logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
-    filename=LOGGING_FILE,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level = logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
+    filename = LOGGING_FILE,
+    format = '%(asctime)s - %(levelname)s - %(message)s'
 )
 
 class ImageDownloader:
     """
-    A class to download images from a specified URL and manage the download process.
-
-    This class handles downloading images, checking for duplicates based on file size,
-    and saving new images to a specified output path.
-
-    Attributes:
-        out_path (Path): The file path where images will be saved.
-        session (requests.Session): The session object used for HTTP requests.
-        prev_image_filename (str): The filename of the previously downloaded image.
-        prev_image_size (int): The file size of the previously downloaded image.
+    Class to handle downloading images and managing hash collisions, while explicitly using the session passed to each download attempt.
     """
 
     def __init__(self, session, out_path):
-        """
-        Initialize the ImageDownloader class with a session and output path.
-
-        Args:
-            session (requests.Session): The session object for HTTP requests.
-            out_path (str): The file path where images will be saved.
-        """
         self.out_path = Path(out_path)
+        self.hash_collisions_path = self.out_path / "hash_collisions"  # Directory for hash collisions
         self.session = session
         self.prev_image_filename = None
         self.prev_image_size = None
         self.prev_image_hash = None
-    
-    def compute_md5(self, image_content):
-        return hashlib.md5(image_content).hexdigest()
+        # self.hash_collisions_path.mkdir(exist_ok=True)  # Ensure the directory exists
+
+    def compute_hash(self, image_content):
+        return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-        logging.info(f"Download Image Func: {session}")
-        global image_size
         today_short_date = datetime.now().strftime("%m%d%Y")
         today_short_time = datetime.now().strftime("%H%M%S")
         
-        r = make_request(IMAGE_URL, verify=False)
-        if r is None:
-            logging.error("Image was not downloaded; r = None")
+        r = session.get(IMAGE_URL, verify=False)
+        if r is None or r.status_code != 200:
+            logging.error("Image was not downloaded; r = None or not 200")
             return None
 
-        image_size = len(r.content)
-        image_hash = self.compute_md5(r.content)
+        # logging.info(f"Server response headers: {r.headers}")
+
+        image_content = r.content
+        image_size = len(image_content)
+        image_hash = self.compute_hash(image_content)
+
+        logging.info(f"Download Image Func: {r.status_code}. Hash {image_hash}")
 
         if image_size == 0:
             logging.error("Image was not downloaded; zero size")
             return None
 
-        if self.prev_image_filename and (self.out_path / self.prev_image_filename).exists():
-            prev_image_path = self.out_path / self.prev_image_filename
-            self.prev_image_size = prev_image_path.stat().st_size
-            current_image_size = len(r.content)
+        if self.prev_image_hash == image_hash:
+            """
+            uncomment if you want to inspect the images by hand.  
+            Also uncomment the hash_collision_path above under __init__.
+            """
+            # FileName = f'{today_short_date}_{today_short_time}.jpg'
+            # collision_file_path = self.hash_collisions_path / FileName
+            # with open(collision_file_path, 'wb') as f:
+            #     f.write(image_content)
+            logging.error(f"Image was not saved; same hash as previous {image_hash}")
+            return None
 
-            with open(prev_image_path, 'rb') as f:
-                prev_image_hash = self.compute_md5(f.read())
-
-            if image_hash != prev_image_hash:
-                FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-                with open(self.out_path / FileName, 'wb') as f:
-                    f.write(r.content)
-                self.prev_image_filename = FileName
-                self.prev_image_size = current_image_size
-                # print(f"New Image Hash: {self.prev_image_hash}")
-                return image_size  # Image saved, return size
-            else:
-                logging.error(f"Image was not saved; same hash as previous {self.prev_image_hash}")
-                return None  # Image not saved due to being the same size
-        else:
-            FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-            with open(self.out_path / FileName, 'wb') as f:
-                f.write(r.content)
-            self.prev_image_filename = FileName
-            self.prev_image_size = len(r.content)
-            self.prev_image_hash = image_hash
-            return image_size  # Image saved, return size
+        FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
+        with open(self.out_path / FileName, 'wb') as f:
+            f.write(image_content)
+        self.prev_image_filename = FileName
+        self.prev_image_size = image_size
+        self.prev_image_hash = image_hash  # Ensure this is updated only here
+        return image_size  # Image saved, return size
 
 def load_config():
     """
@@ -191,57 +174,39 @@ def activity(char, images_folder, image_size):
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
-def create_session(WEBPAGE, verify=False):
+def create_session(webpage, verify=False):
     """
-    Creates and returns a new session for making HTTP requests.
-
-    This function initializes a session with headers including a randomly chosen user agent.
-    It attempts to connect to the specified webpage up to a maximum number of retries.
-    If proxies are configured, it uses them for the connection.
-
+    Initializes a session and verifies its ability to connect to a given webpage.
+    
     Args:
-        WEBPAGE (str): The URL to which the session will connect.
-        verify (bool): Flag to determine whether to verify the server's TLS certificate.
+        webpage (str): The URL to test the session's connectivity.
+        verify (bool): Whether to verify the SSL certificate.
 
     Returns:
-        requests.Session or None: A session object if the connection is successful, None otherwise.
-
-    Raises:
-        SystemExit: If an IncompleteRead or RequestException error occurs during session creation.
+        A requests.Session object if successful, None otherwise.
     """
-    global config
-    proxies = config.get('proxies', {})
-    http_proxy = proxies.get('http', '')
-    https_proxy = proxies.get('https', '')
-    max_retries = 3
-    headers = {
+    session = requests.Session()
+    session.headers.update({
         "User-Agent": choice(USER_AGENTS),
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0"
-    }
-    for _ in range(max_retries):
-        try:
-            if http_proxy and https_proxy:
-                session = requests.get(WEBPAGE, headers=headers, proxies=proxies, verify=verify)
-                session.raise_for_status()
-                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
-                return session
-            else:
-                requests.get(WEBPAGE, headers=headers, verify=verify)
-                session = requests.get(WEBPAGE, headers=headers, verify=verify)
-                session.raise_for_status()
-                logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
-                return session
-        except IncompleteRead as e:
-            logging.error(f"Incomplete Read (create_session()): {e}")
-            print(f"IncompleteRead Error:\n{e}\nExiting.")
-            sys.exit()
-        except requests.RequestException as e:
-            logging.error(f"Request Exception (create_session()): {e}")
-            print(f"RequestException Error:\n{e}\nExiting.")
-            sys.exit()
-    return None
+    })
+
+    # Configure proxies if they are set in config
+    proxies = config.get('proxies', {})
+    if proxies:
+        session.proxies.update(proxies)
+
+    # Perform an initial request to verify connectivity
+    try:
+        response = session.get(webpage, verify=verify, timeout=10)
+        response.raise_for_status()  # Raises a HTTPError for bad responses
+        logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
+        return session
+    except (requests.RequestException, requests.HTTPError) as e:
+        logging.error(f"Failed to connect to {webpage} with session: {e}")
+        return None
 
 def make_request(session, verify=False):
     """
@@ -284,7 +249,7 @@ def make_request(session, verify=False):
             return None
     return None
 
-def create_images_dict(images_folder, today_short_date) -> list:
+def create_images_dict(images_folder) -> list:
     """
     Creates a dictionary of image file paths from the specified folder, filtered by the provided date.
 
@@ -302,7 +267,8 @@ def create_images_dict(images_folder, today_short_date) -> list:
     images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")]) 
     images_dict = {}
 
-    for image in images:
+    for n, image in enumerate(images):
+        print(f"[i]\t{n}", end='\r')
         full_image = os.path.join(images_folder, image)
         with pipes() as (out, err):
             cv2.imread(full_image)
@@ -313,37 +279,156 @@ def create_images_dict(images_folder, today_short_date) -> list:
     valid_files = [file_path for file_path, error_message in images_dict.items() if error_message == ""]
     return valid_files
 
-def create_time_lapse(valid_files, output_path, fps) -> None:
+def calculate_video_duration(num_images, fps) -> int:
     """
-    Creates a time-lapse video from a list of valid image files.
-
-    This function reads the first image file to determine the frame size for the video. 
-    It then iterates over all the valid image files, adding each as a frame to the video. 
-    The function uses OpenCV to handle image reading and video writing.
+    Calculates the expected duration of a time-lapse video.
 
     Args:
-        valid_files (list): A list of file paths for the images to be included in the time-lapse.
-        output_path (str): The file path where the generated time-lapse video will be saved.
+        num_images (int): The number of images to be included in the time-lapse video.
         fps (int): The frames per second rate for the time-lapse video.
 
     Returns:
-        None: This function does not return anything. It saves the time-lapse video at the specified output path.
+        int: The expected duration of the time-lapse video in milliseconds.
     """
+    duration_sec = num_images / fps
+    duration_ms = int(duration_sec * 1000)
+    return duration_ms
 
-    frame = cv2.imread(valid_files[0])  # Read the frame shape from the first file in the list.
-    height, width, _ = frame.shape  # unpack the frame shape
+def audio_download(duration_threshold=150000) -> tuple[str, str]:
+    """
+    Downloads a random song from a specified URL, meeting a minimum duration criterion.
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    This function randomly selects a song from the "soundtracks.loudly.com/songs" API,
+    ensuring the song's duration exceeds a specified threshold. If the first chosen song
+    does not meet the duration threshold, the function retries up to three times to find
+    a suitable song. If a song meeting the criteria is found, it is downloaded and saved
+    in a specified subdirectory.
 
-    for n, image in enumerate(valid_files):
-        print(f"[i]\t{n}", end='\r')
-        frame = cv2.imread(image)
-        video.write(frame)
+    Parameters:
+    - duration_threshold (int): The minimum duration (in milliseconds) required for the song to be considered for download. 
+                                Default value is 150,000 milliseconds (2 minutes and 30 seconds).
 
-    cv2.destroyAllWindows()
-    video.release()
+    Returns:
+    - tuple: A tuple containing the name of the downloaded audio file and its full path. 
+             Returns None if no song meeting the criteria could be found or if an error occurs.
 
+    Raises:
+    - requests.RequestException: If an HTTP request error occurs during the song selection or download process.
+
+    Note:
+    The function prints messages to the console indicating the status of the download or any errors encountered.
+    """
+    try:
+        url = "https://soundtracks.loudly.com/songs"
+        r = requests.get(url)
+        r.raise_for_status()  # Raises stored HTTPError, if one occurred.
+        
+        last_page = r.json().get('pagination_data', {}).get('last_page', 20)
+        page = choice(range(1, last_page + 1))
+        url = f"https://soundtracks.loudly.com/songs?page={page}"
+        r = requests.get(url)
+        r.raise_for_status()
+        
+        data = r.json()
+        songs = data.get('items', [])
+        if not songs:
+            print("No songs found.")
+            return
+        
+        song = choice(songs)
+        song_duration = song.get('duration', 0)
+        
+        # If the song duration is less than the duration_threshold, retry fetching a song (up to 3 attempts)
+        attempts = 1
+        while song_duration <= duration_threshold:
+            print(f"[i]\tSong Attempts: {attempts}", end='\r')
+            song = choice(songs)
+            song_duration = song.get('duration', 0)
+            attempts += 1
+            if attempts > 10:
+                print(f"[!]\tIt's possible there are no songs")
+            
+        
+        if song_duration <= duration_threshold:
+            print(f"\n\n[!]\tFailed to find a song longer than {duration_threshold}. Exiting.\n\n")
+            sys.exit()
+        
+        song_download_path = song.get('music_file_path')
+        if not song_download_path:
+            print("Song download path not found.")
+            return
+        
+        # Download song content
+        r = requests.get(song_download_path)
+        r.raise_for_status()
+        
+        # Prepare filename and save
+        song_name = song.get('title', 'Unknown Song').replace('/', '_')  # Replace slashes to avoid path issues
+        artist_first_name = song.get('artist', {}).get('first_name', 'Unknown')
+        artist_last_name = song.get('artist', {}).get('last_name', 'Artist')
+        artist_full_name = f"{artist_first_name} {artist_last_name}".replace('/', '_')
+        
+        audio_name = f"{artist_full_name} - {song_name}.mp3"
+        audio_path = os.path.join(home, "VLA/audio")  # Saving in a subfolder
+        full_audio_path = os.path.join(audio_path, audio_name)
+        
+        os.makedirs(audio_path, exist_ok=True)
+        with open(full_audio_path, 'wb') as f:
+            f.write(r.content)
+            
+        print(f"[>]\tDownloaded: {audio_name}")
+
+        return audio_name, full_audio_path
+    
+    except requests.RequestException as e:
+        print(f"[!]\tAn error occurred:\n[!]\t{e}")
+
+def create_time_lapse(valid_files, video_path, fps, audio_path, crossfade_seconds=3, end_black_seconds=3):
+    """
+    Creates a time-lapse video from a series of images, featuring fade-in from black, and adds an audio track with fade-in at the beginning and fade-out at the end.
+    Args:
+        valid_files (list): List of paths to image files for the time-lapse.
+        output_path (str): Path where the time-lapse video will be saved.
+        fps (int): Frames per second for the video.
+        audio_path (str): Path to the audio file to be used in the video.
+        crossfade_seconds (int, optional): Duration of the crossfade to black at the video's end.
+        end_black_seconds (int, optional): Duration of the black screen at the video's end.
+    """
+    # Create the video clip from images
+    video_clip = ImageSequenceClip(valid_files, fps=fps)
+
+    # Load the audio file
+    audio_clip = AudioFileClip(audio_path)
+
+    # Calculate total video duration
+    total_video_duration = video_clip.duration
+
+    # Add a fade-in from black effect to the video
+    video_clip = video_clip.fadein(crossfade_seconds)
+
+    # Add a fade-out to black effect to the video
+    video_clip = video_clip.fadeout(crossfade_seconds)
+
+    # Cut the audio to match the video duration (if longer)
+    audio_clip = audio_clip.subclip(0, total_video_duration)
+
+    # Apply audio fade-in and fade-out effects
+    audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
+
+    # Set the processed audio to the video
+    video_clip = video_clip.set_audio(audio_clip)
+
+    # Add end black screen to the video by creating a black frame and concatenating it to the end
+    black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
+    final_clip = concatenate_videoclips([video_clip, black_frame_clip])
+
+    # Write the final video file to disk
+    final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac")
+
+    # Release resources
+    video_clip.close()
+    audio_clip.close()
+    final_clip.close()
 
 
 def main():
@@ -399,19 +484,21 @@ def main():
             video_path = os.path.join(VIDEO_FOLDER, f"VLA.{today_short_date}.mp4")
             logging.info(f"Validating Images")
             print("\n[i]\tValidating Images...")
-            valid_files = create_images_dict(IMAGES_FOLDER, today_short_date)
+            valid_files = create_images_dict(IMAGES_FOLDER)
+            duration_threshold = calculate_video_duration(len(valid_files), fps)
+            logging.info(f"Video Duration: {duration_threshold}")
+            audio_name, full_audio_path = audio_download(duration_threshold)
+            print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
             logging.info(f"Creating Time Lapse")
-            print("[i]\tCreating Time Lapse Video")
-            create_time_lapse(valid_files, video_path, fps)
+            create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
             logging.info(f"Time Lapse Saved: {video_path}")
-            print(f"\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+            print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
 
         except Exception as e:
             logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
         finally:
             cursor.show()
-
 
             
 if __name__ == "__main__":
