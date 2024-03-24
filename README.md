@@ -19,7 +19,7 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 
 ## Setup
 
-1. **We recommend you install a venv first.
+1. **venv Recommended**
 
 2. **Install Required Packages:** Install the required Python packages by running:
 
