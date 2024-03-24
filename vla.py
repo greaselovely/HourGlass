@@ -319,14 +319,16 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
     The function prints messages to the console indicating the status of the download or any errors encountered.
     """
     try:
+        user_agent = choice(USER_AGENTS)
+        headers = {"User-Agent": user_agent}
         url = "https://soundtracks.loudly.com/songs"
-        r = requests.get(url)
+        r = requests.get(url, headers=headers)
         r.raise_for_status()  # Raises stored HTTPError, if one occurred.
         
         last_page = r.json().get('pagination_data', {}).get('last_page', 20)
         page = choice(range(1, last_page + 1))
         url = f"https://soundtracks.loudly.com/songs?page={page}"
-        r = requests.get(url)
+        r = requests.get(url, headers=headers)
         r.raise_for_status()
         
         data = r.json()
