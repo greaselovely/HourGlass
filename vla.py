@@ -14,6 +14,8 @@ from wurlitzer import pipes
 from datetime import datetime
 from http.client import IncompleteRead
 
+from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips
+
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -44,11 +46,10 @@ LOGGING_FOLDER = os.path.join(home, "VLA/logging")
 os.makedirs(LOGGING_FOLDER, exist_ok=True)
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, "vla_log.txt")
 logging.basicConfig(
-    level=logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
-    filename=LOGGING_FILE,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level = logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
+    filename = LOGGING_FILE,
+    format = '%(asctime)s - %(levelname)s - %(message)s'
 )
-
 
 class ImageDownloader:
     """
@@ -248,7 +249,7 @@ def make_request(session, verify=False):
             return None
     return None
 
-def create_images_dict(images_folder, today_short_date) -> list:
+def create_images_dict(images_folder) -> list:
     """
     Creates a dictionary of image file paths from the specified folder, filtered by the provided date.
 
@@ -278,65 +279,157 @@ def create_images_dict(images_folder, today_short_date) -> list:
     valid_files = [file_path for file_path, error_message in images_dict.items() if error_message == ""]
     return valid_files
 
-def create_time_lapse(valid_files, output_path, fps, crossfade_seconds=3, end_black_seconds=3) -> None:
+def calculate_video_duration(num_images, fps) -> int:
     """
-    Creates a time-lapse video from a series of images, featuring a fade-in effect from black at the beginning, a crossfade to black effect towards the end,
-    followed by a period of black screen. This function is designed for smooth transitions between images, a visually appealing introduction and conclusion,
-    and to enhance viewer engagement.
+    Calculates the expected duration of a time-lapse video.
 
     Args:
-        valid_files (list): A list of paths to image files. These images are used to create the time-lapse video. The images should be in the order they are to appear in the video.
-        output_path (str): The path where the time-lapse video will be saved. This should include the filename and the desired file extension (e.g., '.mp4').
-        fps (int): Frames per second for the video. This determines how quickly the images in the time-lapse will transition.
-        crossfade_seconds (int, optional): The duration, in seconds, of the crossfade to black effect at the end of the video. This provides a smooth transition to a black screen. Defaults to 3 seconds.
-        end_black_seconds (int, optional): The duration, in seconds, for which a black screen is shown at the end of the video. This can serve as a moment of pause or reflection after the conclusion of the time-lapse. Defaults to 3 seconds.
+        num_images (int): The number of images to be included in the time-lapse video.
+        fps (int): The frames per second rate for the time-lapse video.
 
-    The function uses OpenCV to read the input images, apply the fade-in and fade-out effects, and encode the final video. It keeps the user informed of its progress through print statements, ensuring transparency in processing times and stages.
+    Returns:
+        int: The expected duration of the time-lapse video in milliseconds.
     """
-    frame = cv2.imread(valid_files[0])
-    height, width, _ = frame.shape
+    duration_sec = num_images / fps
+    duration_ms = int(duration_sec * 1000)
+    return duration_ms
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+def audio_download(duration_threshold=150000) -> tuple[str, str]:
+    """
+    Downloads a random song from a specified URL, meeting a minimum duration criterion.
 
-    total_frames = len(valid_files)
-    fade_frames = fps * crossfade_seconds
-    fade_in_end_frame = fade_frames  # End of fade-in period
-    fade_out_start_frame = total_frames - fade_frames  # Start of fade-out period
+    This function randomly selects a song from the "soundtracks.loudly.com/songs" API,
+    ensuring the song's duration exceeds a specified threshold. If the first chosen song
+    does not meet the duration threshold, the function retries up to three times to find
+    a suitable song. If a song meeting the criteria is found, it is downloaded and saved
+    in a specified subdirectory.
 
-    black_frame = np.zeros_like(frame)
+    Parameters:
+    - duration_threshold (int): The minimum duration (in milliseconds) required for the song to be considered for download. 
+                                Default value is 150,000 milliseconds (2 minutes and 30 seconds).
 
-    # Apply fade-in effect at the beginning
-    for n in range(fade_in_end_frame):
-        print(f"[i]\t{n}", end='\r')
-        fade_ratio = n / fade_frames
-        if n < len(valid_files):  # Ensure there are enough images for the fade-in
-            frame = cv2.imread(valid_files[n])
-        blended_frame = cv2.addWeighted(black_frame, 1 - fade_ratio, frame, fade_ratio, 0)
-        video.write(blended_frame)
+    Returns:
+    - tuple: A tuple containing the name of the downloaded audio file and its full path. 
+             Returns None if no song meeting the criteria could be found or if an error occurs.
 
-    # Process middle frames without fading
-    for n in range(fade_in_end_frame, fade_out_start_frame):
-        print(f"[i]\t{n}", end='\r')
-        if n < len(valid_files):  # Check to avoid index out of range
-            frame = cv2.imread(valid_files[n])
-            video.write(frame)
+    Raises:
+    - requests.RequestException: If an HTTP request error occurs during the song selection or download process.
 
-    # Apply dynamic fading if within the fade-out period
-    for n in range(fade_out_start_frame, total_frames):
-        if n < len(valid_files):  # Continue checking to avoid index out of range
-            print(f"[i]\t{n}", end='\r')
-            frame = cv2.imread(valid_files[n])
-            fade_ratio = (n - fade_out_start_frame) / fade_frames
-            frame = cv2.addWeighted(frame, 1 - fade_ratio, black_frame, fade_ratio, 0)
-            video.write(frame)
+    Note:
+    The function prints messages to the console indicating the status of the download or any errors encountered.
+    """
+    try:
+        url = "https://soundtracks.loudly.com/songs"
+        r = requests.get(url)
+        r.raise_for_status()  # Raises stored HTTPError, if one occurred.
+        
+        last_page = r.json().get('pagination_data', {}).get('last_page', 20)
+        page = choice(range(1, last_page + 1))
+        url = f"https://soundtracks.loudly.com/songs?page={page}"
+        r = requests.get(url)
+        r.raise_for_status()
+        
+        data = r.json()
+        songs = data.get('items', [])
+        if not songs:
+            print("No songs found.")
+            return
+        
+        song = choice(songs)
+        song_duration = song.get('duration', 0)
+        
+        # If the song duration is less than the duration_threshold, retry fetching a song (up to 3 attempts)
+        attempts = 1
+        while song_duration <= duration_threshold:
+            print(f"[i]\tSong Attempts: {attempts}", end='\r')
+            song = choice(songs)
+            song_duration = song.get('duration', 0)
+            attempts += 1
+            if attempts > 10:
+                print(f"[!]\tIt's possible there are no songs")
+            
+        
+        if song_duration <= duration_threshold:
+            print(f"\n\n[!]\tFailed to find a song longer than {duration_threshold}. Exiting.\n\n")
+            sys.exit()
+        
+        song_download_path = song.get('music_file_path')
+        if not song_download_path:
+            print("Song download path not found.")
+            return
+        
+        # Download song content
+        r = requests.get(song_download_path)
+        r.raise_for_status()
+        
+        # Prepare filename and save
+        song_name = song.get('title', 'Unknown Song').replace('/', '_')  # Replace slashes to avoid path issues
+        artist_first_name = song.get('artist', {}).get('first_name', 'Unknown')
+        artist_last_name = song.get('artist', {}).get('last_name', 'Artist')
+        artist_full_name = f"{artist_first_name} {artist_last_name}".replace('/', '_')
+        
+        audio_name = f"{artist_full_name} - {song_name}.mp3"
+        audio_path = os.path.join(home, "VLA/audio")  # Saving in a subfolder
+        full_audio_path = os.path.join(audio_path, audio_name)
+        
+        os.makedirs(audio_path, exist_ok=True)
+        with open(full_audio_path, 'wb') as f:
+            f.write(r.content)
+            
+        print(f"[>]\tDownloaded: {audio_name}")
 
-    # Add black frames for the end black screen duration
-    for _ in range(fps * end_black_seconds):
-        video.write(black_frame)
+        return audio_name, full_audio_path
+    
+    except requests.RequestException as e:
+        print(f"[!]\tAn error occurred:\n[!]\t{e}")
 
-    video.release()
-    cv2.destroyAllWindows()
+def create_time_lapse(valid_files, video_path, fps, audio_path, crossfade_seconds=3, end_black_seconds=3):
+    """
+    Creates a time-lapse video from a series of images, featuring fade-in from black, and adds an audio track with fade-in at the beginning and fade-out at the end.
+    Args:
+        valid_files (list): List of paths to image files for the time-lapse.
+        output_path (str): Path where the time-lapse video will be saved.
+        fps (int): Frames per second for the video.
+        audio_path (str): Path to the audio file to be used in the video.
+        crossfade_seconds (int, optional): Duration of the crossfade to black at the video's end.
+        end_black_seconds (int, optional): Duration of the black screen at the video's end.
+    """
+    # Create the video clip from images
+    video_clip = ImageSequenceClip(valid_files, fps=fps)
+
+    # Load the audio file
+    audio_clip = AudioFileClip(audio_path)
+
+    # Calculate total video duration
+    total_video_duration = video_clip.duration
+
+    # Add a fade-in from black effect to the video
+    video_clip = video_clip.fadein(crossfade_seconds)
+
+    # Add a fade-out to black effect to the video
+    video_clip = video_clip.fadeout(crossfade_seconds)
+
+    # Cut the audio to match the video duration (if longer)
+    audio_clip = audio_clip.subclip(0, total_video_duration)
+
+    # Apply audio fade-in and fade-out effects
+    audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
+
+    # Set the processed audio to the video
+    video_clip = video_clip.set_audio(audio_clip)
+
+    # Add end black screen to the video by creating a black frame and concatenating it to the end
+    black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
+    final_clip = concatenate_videoclips([video_clip, black_frame_clip])
+
+    # Write the final video file to disk
+    final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac")
+
+    # Release resources
+    video_clip.close()
+    audio_clip.close()
+    final_clip.close()
+
 
 def main():
     """
@@ -391,18 +484,22 @@ def main():
             video_path = os.path.join(VIDEO_FOLDER, f"VLA.{today_short_date}.mp4")
             logging.info(f"Validating Images")
             print("\n[i]\tValidating Images...")
-            valid_files = create_images_dict(IMAGES_FOLDER, today_short_date)
+            valid_files = create_images_dict(IMAGES_FOLDER)
+            duration_threshold = calculate_video_duration(len(valid_files), fps)
+            logging.info(f"Video Duration: {duration_threshold}")
+            audio_name, full_audio_path = audio_download(duration_threshold)
+            print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
             logging.info(f"Creating Time Lapse")
-            print("[i]\tCreating Time Lapse Video")
-            create_time_lapse(valid_files, video_path, fps)
+            create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
             logging.info(f"Time Lapse Saved: {video_path}")
-            print(f"\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+            print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
 
         except Exception as e:
             logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
         finally:
             cursor.show()
-         
+
+            
 if __name__ == "__main__":
     main()

@@ -1,5 +1,6 @@
 *.json
 rename.py
+audio/
 dups.py
 sun.py
 aps.py
