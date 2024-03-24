@@ -340,7 +340,7 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
         song = choice(songs)
         song_duration = song.get('duration', 0)
         
-        # If the song duration is less than the duration_threshold, retry fetching a song (up to 3 attempts)
+        # If the song duration is less than the duration_threshold, retry fetching a song
         attempts = 1
         while song_duration <= duration_threshold:
             print(f"[i]\tSong Attempts: {attempts}", end='\r')
