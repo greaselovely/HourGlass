@@ -366,11 +366,7 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
         
         # Prepare filename and save
         song_name = song.get('title', 'Unknown Song').replace('/', '_')  # Replace slashes to avoid path issues
-        artist_first_name = song.get('artist', {}).get('first_name', 'Unknown')
-        artist_last_name = song.get('artist', {}).get('last_name', 'Artist')
-        artist_full_name = f"{artist_first_name} {artist_last_name}".replace('/', '_')
-        
-        audio_name = f"{artist_full_name} - {song_name}.mp3"
+        audio_name = f"{song_name}.mp3"
         audio_path = os.path.join(home, "VLA/audio")  # Saving in a subfolder
         full_audio_path = os.path.join(audio_path, audio_name)
         
