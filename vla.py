@@ -6,14 +6,18 @@ import hashlib
 import logging
 import textwrap
 import requests
+import pytesseract
 import numpy as np
 from sys import exit
+from PIL import Image
 from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
 from datetime import datetime
 from http.client import IncompleteRead
+
+
 
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips
 
@@ -75,7 +79,7 @@ class ImageDownloader:
         
         r = session.get(IMAGE_URL, verify=False)
         if r is None or r.status_code != 200:
-            logging.error(f"{u"\u2705"} Code: {r.status_code} r = None or Not 200")
+            logging.error(f"\u2705 Code: {r.status_code} r = None or Not 200")
             return None
 
         image_content = r.content
@@ -83,8 +87,17 @@ class ImageDownloader:
         image_hash = self.compute_hash(image_content)
 
         if image_size == 0:
-            logging.error(f"{u"\u2705"} Code: {r.status_code} Zero Size")
+            logging.error(f"\u2705 Code: {r.status_code} Zero Size")
             return None
+
+
+        FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
+        with open(self.out_path / FileName, 'wb') as f:
+            f.write(image_content)
+        image = Image.open(image_content)
+        # Use tesseract to do OCR on the image
+        time_stamp = pytesseract.image_to_string(image)
+
 
         if self.prev_image_hash == image_hash:
             """
@@ -95,19 +108,16 @@ class ImageDownloader:
             # collision_file_path = self.hash_collisions_path / FileName
             # with open(collision_file_path, 'wb') as f:
             #     f.write(image_content)
-            logging.info(f"{u"\u274C"} Code: {r.status_code} Same Hash: {image_hash}")
+            logging.info(f"{time_stamp} \u274C Code: {r.status_code} Same Hash: {image_hash}")
             return None
         else:
-            logging.info(f"{"\u2705"} Code: {r.status_code}  New Hash: {image_hash}")
+            logging.info(f"{time_stamp} \u2705 Code: {r.status_code}  New Hash: {image_hash}")
 
 
-        FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-        with open(self.out_path / FileName, 'wb') as f:
-            f.write(image_content)
         self.prev_image_filename = FileName
         self.prev_image_size = image_size
         self.prev_image_hash = image_hash  # Ensure this is updated only here
-        return image_size  # Image saved, return size
+        return image_size, time_stamp  # Image saved, return size
 
 def load_config():
     """
@@ -154,7 +164,7 @@ def clear():
     """
     os.system("cls" if os.name == "nt" else "clear")
 
-def activity(char, images_folder, image_size):
+def activity(char, images_folder, image_size, time_stamp=""):
     """
     Displays the current status of the image downloading activity in the terminal.
 
@@ -172,7 +182,7 @@ def activity(char, images_folder, image_size):
     clear()
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
-    print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
+    print(f"Time Stamp: {time_stamp}\nIter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
 def create_session(webpage, verify=False):
     """
@@ -463,15 +473,15 @@ def main():
         while True:
             try:
                 SECONDS = choice(range(15,22))
-                image_size = downloader.download_image(session, IMAGE_URL)
+                image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
                 # If we don't save the image because the hash is the same
                 # then the image_size is None.  This is strictly console
                 # notification and probably should be deprecated.
                 if image_size is not None: 
-                    activity(i, IMAGES_FOLDER, image_size)
+                    activity(i, IMAGES_FOLDER, image_size, time_stamp)
                 else:
                     clear()
-                    print(f"{u"\u274C"} Iteration: {i}")
+                    print(f"\u274C Iteration: {i}")
                 sleep(SECONDS)
                 
                 i += 1
