@@ -4,6 +4,7 @@ import json
 import cursor
 import hashlib
 import logging
+import textwrap
 import requests
 import numpy as np
 from sys import exit
@@ -201,7 +202,9 @@ def create_session(webpage, verify=False):
     try:
         response = session.get(webpage, verify=verify, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
-        logging.info(f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}")
+        session_log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
+        wrapped_message = textwrap.fill(session_log_message, width=90)
+        logging.info(wrapped_message)
         return session
     except (requests.RequestException, requests.HTTPError) as e:
         logging.error(f"Failed to connect to {webpage} with session: {e}")
