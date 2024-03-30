@@ -97,7 +97,7 @@ class ImageDownloader:
             logging.info(f"{u"\u274C"} Code: {r.status_code} Same Hash: {image_hash}")
             return None
         else:
-            logging.info(f"\{u"\u2705"} Code: {r.status_code}  New Hash: {image_hash}")
+            logging.info(f"{"\u2705"} Code: {r.status_code}  New Hash: {image_hash}")
 
 
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
