@@ -8,6 +8,7 @@ import logging
 import textwrap
 import requests
 import tesserocr
+import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
@@ -96,7 +97,7 @@ class ImageDownloader:
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
         with open(self.out_path / FileName, 'wb') as f:
             f.write(image_content)
-            
+
         image = Image.open(BytesIO(image_content))
         with tesserocr.PyTessBaseAPI() as api:
             api.SetImage(image)
