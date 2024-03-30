@@ -7,7 +7,7 @@ import hashlib
 import logging
 import textwrap
 import requests
-import pytesseract
+import tesserocr
 import numpy as np
 from sys import exit
 from PIL import Image
@@ -96,9 +96,11 @@ class ImageDownloader:
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
         with open(self.out_path / FileName, 'wb') as f:
             f.write(image_content)
+            
         image = Image.open(BytesIO(image_content))
-        # Use tesseract to do OCR on the image
-        time_stamp = pytesseract.image_to_string(image)
+        with tesserocr.PyTessBaseAPI() as api:
+            api.SetImage(image)
+            time_stamp = api.GetUTF8Text()
 
 
         if self.prev_image_hash == image_hash:
