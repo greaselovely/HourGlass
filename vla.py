@@ -1,5 +1,6 @@
 import os
 import cv2
+import sys
 import json
 import cursor
 import hashlib
@@ -10,6 +11,7 @@ import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
+from io import BytesIO
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -94,7 +96,7 @@ class ImageDownloader:
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
         with open(self.out_path / FileName, 'wb') as f:
             f.write(image_content)
-        image = Image.open(image_content)
+        image = Image.open(BytesIO(image_content))
         # Use tesseract to do OCR on the image
         time_stamp = pytesseract.image_to_string(image)
 
