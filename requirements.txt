@@ -8,4 +8,5 @@ opencv_python_headless==4.8.0.74
 Pillow
 Requests==2.31.0
 tesserocr
+pytesseract
 wurlitzer==3.0.3
