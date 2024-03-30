@@ -74,7 +74,7 @@ class ImageDownloader:
         
         r = session.get(IMAGE_URL, verify=False)
         if r is None or r.status_code != 200:
-            logging.error(f"\N{thumbs down sign}) Code: {r.status_code} r = None or Not 200")
+            logging.error(f"\N{thumbs down sign} Code: {r.status_code} r = None or Not 200")
             return None
 
         image_content = r.content
@@ -82,7 +82,7 @@ class ImageDownloader:
         image_hash = self.compute_hash(image_content)
 
         if image_size == 0:
-            logging.error(f"\N{thumbs down sign}) Code: {r.status_code} Zero Size")
+            logging.error(f"\N{thumbs down sign} Code: {r.status_code} Zero Size")
             return None
 
         if self.prev_image_hash == image_hash:
@@ -94,10 +94,10 @@ class ImageDownloader:
             # collision_file_path = self.hash_collisions_path / FileName
             # with open(collision_file_path, 'wb') as f:
             #     f.write(image_content)
-            logging.info(f"\N{thumbs down sign}) Code: {r.status_code} Same Hash: {image_hash}")
+            logging.info(f"\N{thumbs down sign} Code: {r.status_code} Same Hash: {image_hash}")
             return None
         else:
-            logging.info(f"\N{thumbs up sign}) Code: {r.status_code}  New Hash: {image_hash}")
+            logging.info(f"\N{thumbs up sign} Code: {r.status_code}  New Hash: {image_hash}")
 
 
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
