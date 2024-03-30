@@ -203,7 +203,7 @@ def create_session(webpage, verify=False):
         response = session.get(webpage, verify=verify, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
         session_log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
-        wrapped_message = textwrap.fill(session_log_message, width=90)
+        wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34)
         logging.info(wrapped_message)
         return session
     except (requests.RequestException, requests.HTTPError) as e:
