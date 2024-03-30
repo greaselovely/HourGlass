@@ -203,7 +203,7 @@ def create_session(webpage, verify=False):
         response = session.get(webpage, verify=verify, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
         session_log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
-        wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34)
+        wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
         logging.info(wrapped_message)
         return session
     except (requests.RequestException, requests.HTTPError) as e:
@@ -242,11 +242,15 @@ def make_request(session, verify=False):
                 response.raise_for_status()
                 return response
         except IncompleteRead as e:
-            logging.error(f"Incomplete Read (make_request()): {e}")
+            log_message = f"Incomplete Read (make_request()): {e}"
+            wrapped_message = textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
+            logging.error(wrapped_message)
             print(f"IncompleteRead Error: {e}")
             return None
         except requests.RequestException as e:
-            logging.error(f"Request Exception (make_request()): {e}")
+            log_message = f"Incomplete Read (make_request()): {e}"
+            wrapped_message = textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
+            logging.error(wrapped_message)
             print(f"RequestException Error: {e}")
             return None
     return None
