@@ -471,7 +471,7 @@ def main():
                     activity(i, IMAGES_FOLDER, image_size)
                 else:
                     clear()
-                    print(f"\N{thumbs down sign} Iteration: {i}")
+                    print(f"{u"\u274C"} Iteration: {i}")
                 sleep(SECONDS)
                 
                 i += 1
