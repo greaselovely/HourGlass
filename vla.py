@@ -476,7 +476,9 @@ def main():
                 
                 i += 1
             except requests.exceptions.RequestException as e:
-                logging.error(f"Session timeout or error detect, re-establishing session: {e}")
+                session_log_message = f"Session timeout or error detect, re-establishing session: {e}"
+                wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
+                logging.error(wrapped_message)
                 print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
