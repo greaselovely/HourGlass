@@ -545,6 +545,9 @@ def main():
         except Exception as e:
             logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
+            create_time_lapse(valid_files, video_path, fps, full_AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3)
+            logging.info(f"Time Lapse Saved: {video_path}")
+            print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
         finally:
             cursor.show()
 
