@@ -106,7 +106,7 @@ class ImageDownloader:
             logging.error(f"{RED_CIRCLE} Code: {r.status_code} Zero Size")
             return None
 
-
+        today_short_time = datetime.now().strftime("%H%M%S")
         FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
         with open(self.out_path / FileName, 'wb') as f:
             f.write(image_content)
