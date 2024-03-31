@@ -1,0 +1,10 @@
+apscheduler
+beautifulsoup4
+cursor
+moviepy
+numpy
+opencv_python
+opencv_python_headless
+Pillow
+Requests
+wurlitzer
