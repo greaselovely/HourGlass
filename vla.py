@@ -39,13 +39,13 @@ today_short_date = datetime.now().strftime("%m%d%Y")
 today_short_time = datetime.now().strftime("%H%M%S")
 
 HOME = Path.home()
-VLA_BASE = HOME / "VLA"
-VIDEO_FOLDER = VLA_BASE / "video"
-IMAGES_FOLDER = VLA_BASE / "images"
-LOGGING_FOLDER = VLA_BASE / "logging"
-AUDIO_PATH = VLA_BASE / "audio"
+VLA_BASE = os.path.join(HOME, "VLA")
+VIDEO_FOLDER = os.path.join(VLA_BASE, "video")
+IMAGES_FOLDER = os.path.join(VLA_BASE, "images")
+LOGGING_FOLDER = os.path.join(VLA_BASE, "logging")
+AUDIO_PATH = os.path.join(VLA_BASE, "audio")
 LOG_FILE_NAME = "vla_log.txt"
-LOGGING_FILE = LOGGING_FOLDER / LOG_FILE_NAME
+LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
 
 # Ensure directories exist
 for folder in [LOGGING_FOLDER, AUDIO_PATH, IMAGES_FOLDER, VIDEO_FOLDER]:
@@ -240,7 +240,7 @@ def activity(char, images_folder, image_size, time_stamp=""):
         None: This function does not return anything. It only prints to stdout.
     """
     clear()
-    files = os.listdir(str(images_folder))
+    files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     # print(f"Time Stamp: {time_stamp}\nIter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
@@ -469,9 +469,6 @@ def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_second
 
     The function generates a video file at the specified `video_path` by sequencing the provided images at the given framerate (`fps`), applying audio from `AUDIO_PATH`, and incorporating the specified visual effects for transitions and ending.
     """
-    video_path = str(video_path)
-    AUDIO_PATH = str(AUDIO_PATH)
-    valid_files = [str(file) for file in valid_files]
 
     video_clip = ImageSequenceClip(valid_files, fps=fps)
     audio_clip = AudioFileClip(AUDIO_PATH)
