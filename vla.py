@@ -471,6 +471,7 @@ def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_second
     """
     video_path = str(video_path)
     AUDIO_PATH = str(AUDIO_PATH)
+    valid_files = [str(file) for file in valid_files]
 
     # Create the video clip from images
     video_clip = ImageSequenceClip(valid_files, fps=fps)
