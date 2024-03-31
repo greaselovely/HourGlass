@@ -545,6 +545,15 @@ def main():
         except Exception as e:
             logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
+            fps = 10
+            logging.info(f"Validating Images")
+            print("\n[i]\tValidating Images...")
+            valid_files = create_images_dict(IMAGES_FOLDER)
+            duration_threshold = calculate_video_duration(len(valid_files), fps)
+            logging.info(f"Video Duration: {duration_threshold}")
+            full_AUDIO_PATH = audio_download(duration_threshold)
+            print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
+            logging.info(f"Creating Time Lapse")
             create_time_lapse(valid_files, video_path, fps, full_AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3)
             logging.info(f"Time Lapse Saved: {video_path}")
             print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
