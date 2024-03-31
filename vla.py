@@ -35,6 +35,25 @@ TO DO
 
 """
 
+today_short_date = datetime.now().strftime("%m%d%Y")
+today_short_time = datetime.now().strftime("%H%M%S")
+
+HOME = Path.home()
+VLA_BASE = HOME / "VLA"
+VIDEO_FOLDER = VLA_BASE / "video"
+IMAGES_FOLDER = VLA_BASE / "images"
+LOGGING_FOLDER = VLA_BASE / "logging"
+AUDIO_PATH = VLA_BASE / "audio"
+LOG_FILE_NAME = "vla_log.txt"
+LOGGING_FILE = LOGGING_FOLDER / LOG_FILE_NAME
+
+# Ensure directories exist
+for folder in [LOGGING_FOLDER, AUDIO_PATH, IMAGES_FOLDER, VIDEO_FOLDER]:
+    folder.mkdir(parents=True, exist_ok=True)
+
+# Using dynamic date for file names
+video_path = VIDEO_FOLDER / f"VLA.{today_short_date}.mp4"
+
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
 GREEN_CIRCLE = "\U0001F7E2"
@@ -52,10 +71,9 @@ USER_AGENTS = [
     "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36"
 ]
 
-home = Path.home()
-LOGGING_FOLDER = os.path.join(home, "VLA/logging")
-os.makedirs(LOGGING_FOLDER, exist_ok=True)
-LOGGING_FILE = os.path.join(LOGGING_FOLDER, "vla_log.txt")
+
+
+
 logging.basicConfig(
     level = logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
     filename = LOGGING_FILE,
@@ -80,8 +98,7 @@ class ImageDownloader:
         return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-        today_short_date = datetime.now().strftime("%m%d%Y")
-        today_short_time = datetime.now().strftime("%H%M%S")
+
         
         r = session.get(IMAGE_URL, verify=False)
         if r is None or r.status_code != 200:
@@ -427,28 +444,28 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
         # Prepare filename and save
         song_name = song.get('title', 'Unknown Song').replace('/', '_')  # Replace slashes to avoid path issues
         audio_name = f"{song_name}.mp3"
-        audio_path = os.path.join(home, "VLA/audio")  # Saving in a subfolder
-        full_audio_path = os.path.join(audio_path, audio_name)
+
+        full_audio_path = os.path.join(AUDIO_PATH, audio_name)
         
-        os.makedirs(audio_path, exist_ok=True)
         with open(full_audio_path, 'wb') as f:
             f.write(r.content)
             
         print(f"[>]\tDownloaded: {audio_name}")
 
-        return audio_name, full_audio_path
+
+        return full_audio_path
     
     except requests.RequestException as e:
         print(f"[!]\tAn error occurred:\n[!]\t{e}")
 
-def create_time_lapse(valid_files, video_path, fps, audio_path, crossfade_seconds=3, end_black_seconds=3):
+def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3):
     """
     Creates a time-lapse video from a series of images, featuring fade-in from black, and adds an audio track with fade-in at the beginning and fade-out at the end.
     Args:
         valid_files (list): List of paths to image files for the time-lapse.
         output_path (str): Path where the time-lapse video will be saved.
         fps (int): Frames per second for the video.
-        audio_path (str): Path to the audio file to be used in the video.
+        AUDIO_PATH (str): Path to the audio file to be used in the video.
         crossfade_seconds (int, optional): Duration of the crossfade to black at the video's end.
         end_black_seconds (int, optional): Duration of the black screen at the video's end.
     """
@@ -456,7 +473,7 @@ def create_time_lapse(valid_files, video_path, fps, audio_path, crossfade_second
     video_clip = ImageSequenceClip(valid_files, fps=fps)
 
     # Load the audio file
-    audio_clip = AudioFileClip(audio_path)
+    audio_clip = AudioFileClip(AUDIO_PATH)
 
     # Calculate total video duration
     total_video_duration = video_clip.duration
@@ -501,13 +518,9 @@ def main():
     try:
         clear()
         cursor.hide()
-        IMAGES_FOLDER = os.path.join(home, "VLA/images")
-        VIDEO_FOLDER = os.path.join(home, "VLA")
         global config
         config = load_config()
-        
-        os.makedirs(IMAGES_FOLDER, exist_ok=True)
-        
+                
         session = create_session(WEBPAGE)
         
         downloader = ImageDownloader(session, IMAGES_FOLDER)
@@ -540,17 +553,15 @@ def main():
     except KeyboardInterrupt:
         try:
             fps = 10
-            today_short_date = datetime.now().strftime("%m%d%Y")
-            video_path = os.path.join(VIDEO_FOLDER, f"VLA.{today_short_date}.mp4")
             logging.info(f"Validating Images")
             print("\n[i]\tValidating Images...")
             valid_files = create_images_dict(IMAGES_FOLDER)
             duration_threshold = calculate_video_duration(len(valid_files), fps)
             logging.info(f"Video Duration: {duration_threshold}")
-            audio_name, full_audio_path = audio_download(duration_threshold)
+            full_AUDIO_PATH = audio_download(duration_threshold)
             print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
             logging.info(f"Creating Time Lapse")
-            create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
+            create_time_lapse(valid_files, video_path, fps, full_AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3)
             logging.info(f"Time Lapse Saved: {video_path}")
             print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
 
