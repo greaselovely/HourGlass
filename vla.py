@@ -36,7 +36,6 @@ TO DO
 """
 
 today_short_date = datetime.now().strftime("%m%d%Y")
-today_short_time = datetime.now().strftime("%H%M%S")
 
 HOME = Path.home()
 VLA_BASE = os.path.join(HOME, "VLA")
@@ -47,15 +46,14 @@ AUDIO_PATH = os.path.join(VLA_BASE, "audio")
 LOG_FILE_NAME = "vla_log.txt"
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
 
-# Ensure directories exist
 for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_PATH]:
     os.makedirs(folder, exist_ok=True)
 
-# Using dynamic date for file names
 video_path = os.path.join(VIDEO_FOLDER,f"VLA.{today_short_date}.mp4")
 
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
+
 GREEN_CIRCLE = "\U0001F7E2"
 RED_CIRCLE = "\U0001F534"
 
@@ -95,8 +93,6 @@ class ImageDownloader:
         return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-
-        
         r = session.get(IMAGE_URL, verify=False)
         if r is None or r.status_code != 200:
             logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
@@ -508,6 +504,7 @@ def main():
         i = 1
         while True:
             try:
+                today_short_time = datetime.now().strftime("%H%M%S")
                 SECONDS = choice(range(15,22))
                 # image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
                 image_size = downloader.download_image(session, IMAGE_URL)
