@@ -240,7 +240,7 @@ def activity(char, images_folder, image_size, time_stamp=""):
         None: This function does not return anything. It only prints to stdout.
     """
     clear()
-    files = os.listdir(images_folder)
+    files = os.listdir(str(images_folder))
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     # print(f"Time Stamp: {time_stamp}\nIter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
