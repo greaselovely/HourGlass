@@ -175,6 +175,40 @@ def clear():
     """
     os.system("cls" if os.name == "nt" else "clear")
 
+def log_jamming(log_message):
+    """
+    Formats a log message to fit a specified width with indentation.  He fixes the cable.
+
+    This function takes a log message as input and formats it using textwrap to ensure that it fits within a
+    width of 90 characters. It adds a uniform indentation after the first line to align subsequent lines with
+    the end of the log preface, which is 34 characters long. This indentation applies to all lines following
+    the first line of the log message.
+
+    The primary purpose is to enhance the readability of log messages, especially when they contain long strings
+    or data structures that would otherwise extend beyond the typical viewing area of a console or log file viewer.
+
+    Parameters:
+    - log_message (str): The log message to be formatted.
+
+    Returns:
+    - str: A string that has been formatted to meet the specified constraints.
+
+    Example of use:
+    log_jamming("Session Created: {'mailchimp_landing_site': 'https%3A%2F%2Fpublic.nrao.edu%2Fvla-webcam%2F'}, ValuesView({...})")
+
+    This will return a formatted string that looks like this in the output (example):
+    2024-03-30 19:36:24,025 - INFO - Session Created: {'mailchimp_landing_site': 'https%3A%2F%2Fpublic.nrao.edu%2Fvla-
+                                  webcam%2F'}, ValuesView({'User-Agent': 'Mozilla/5.0
+                                  (iPhone; CPU iPhone OS 15_0 like Mac OS X)
+                                  AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0
+                                  Mobile/15E148 Safari/604.1', 'Accept-Encoding': 'gzip,
+                                  deflate', 'Accept': '*/*', 'Connection': 'keep-alive',
+                                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                  'Pragma': 'no-cache', 'Expires': '0'})
+    """
+    log_preface = 34  # This is the length of the date, time, and info log preface
+    return textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * log_preface)
+
 # def activity(char, images_folder, image_size, time_stamp=""):
 def activity(char, images_folder, image_size, time_stamp=""):
     """
@@ -225,9 +259,8 @@ def create_session(webpage, verify=False):
     try:
         response = session.get(webpage, verify=verify, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
-        session_log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
-        wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
-        logging.info(wrapped_message)
+        log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
+        logging.info(log_jamming(log_message))
         return session
     except (requests.RequestException, requests.HTTPError) as e:
         logging.error(f"Failed to connect to {webpage} with session: {e}")
@@ -266,14 +299,12 @@ def make_request(session, verify=False):
                 return response
         except IncompleteRead as e:
             log_message = f"Incomplete Read (make_request()): {e}"
-            wrapped_message = textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
-            logging.error(wrapped_message)
+            logging.error(log_jamming(log_message))
             print(f"IncompleteRead Error: {e}")
             return None
         except requests.RequestException as e:
             log_message = f"Incomplete Read (make_request()): {e}"
-            wrapped_message = textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
-            logging.error(wrapped_message)
+            logging.error(log_jamming(log_message))
             print(f"RequestException Error: {e}")
             return None
     return None
@@ -457,7 +488,6 @@ def create_time_lapse(valid_files, video_path, fps, audio_path, crossfade_second
     audio_clip.close()
     final_clip.close()
 
-
 def main():
     """
     The main function of the script. It orchestrates the process of downloading images,
@@ -501,9 +531,8 @@ def main():
                 
                 i += 1
             except requests.exceptions.RequestException as e:
-                session_log_message = f"Session timeout or error detect, re-establishing session: {e}"
-                wrapped_message = textwrap.fill(session_log_message, width=90, initial_indent='', subsequent_indent=' ' * 34) # 34 is the length of the date, time and info log preface
-                logging.error(wrapped_message)
+                log_message = f"Session timeout or error detect, re-establishing session: {e}"
+                logging.error(log_jamming(log_message))
                 print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
@@ -531,6 +560,5 @@ def main():
         finally:
             cursor.show()
 
-            
 if __name__ == "__main__":
     main()
