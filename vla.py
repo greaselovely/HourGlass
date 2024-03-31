@@ -37,6 +37,9 @@ TO DO
 
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
+GREEN_CIRCLE = "\U0001F7E2"
+RED_CIRCLE = "\U0001F534"
+
 
 USER_AGENTS = [
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:90.0) Firefox/90.0",
@@ -82,7 +85,7 @@ class ImageDownloader:
         
         r = session.get(IMAGE_URL, verify=False)
         if r is None or r.status_code != 200:
-            logging.error(f"\u2705 Code: {r.status_code} r = None or Not 200")
+            logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
             return None
 
         image_content = r.content
@@ -90,7 +93,7 @@ class ImageDownloader:
         image_hash = self.compute_hash(image_content)
 
         if image_size == 0:
-            logging.error(f"\u2705 Code: {r.status_code} Zero Size")
+            logging.error(f"{RED_CIRCLE} Code: {r.status_code} Zero Size")
             return None
 
 
@@ -113,12 +116,12 @@ class ImageDownloader:
             # collision_file_path = self.hash_collisions_path / FileName
             # with open(collision_file_path, 'wb') as f:
             #     f.write(image_content)
-            # logging.info(f"{time_stamp} \u274C Code: {r.status_code} Same Hash: {image_hash}")
-            logging.info(f"\u274C Code: {r.status_code} Same Hash: {image_hash}")
+            # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
+            logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
             return None
         else:
-            # logging.info(f"{time_stamp} \u2705 Code: {r.status_code}  New Hash: {image_hash}")
-            logging.info(f"\u2705 Code: {r.status_code}  New Hash: {image_hash}")
+            # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+            logging.info(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
 
 
         self.prev_image_filename = FileName
@@ -493,7 +496,7 @@ def main():
                     activity(i, IMAGES_FOLDER, image_size)
                 else:
                     clear()
-                    print(f"\u274C Iteration: {i}")
+                    print(f"{RED_CIRCLE} Iteration: {i}")
                 sleep(SECONDS)
                 
                 i += 1
