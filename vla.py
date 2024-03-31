@@ -469,6 +469,9 @@ def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_second
         crossfade_seconds (int, optional): Duration of the crossfade to black at the video's end.
         end_black_seconds (int, optional): Duration of the black screen at the video's end.
     """
+    video_path = str(video_path)
+    AUDIO_PATH = str(AUDIO_PATH)
+
     # Create the video clip from images
     video_clip = ImageSequenceClip(valid_files, fps=fps)
 
