@@ -3,6 +3,7 @@ import cv2
 import sys
 import json
 import cursor
+import shutil
 import hashlib
 import logging
 import textwrap
@@ -164,9 +165,12 @@ def load_config():
         We'll build an empty config.json file.
         Edit to use proxies
         ie: "http" : "http://127.0.0.1:8080", "https" : "http://127.0.0.1:8080"
+        Edit to use a Dropbox path for file upload
+        ie: "dropbox" : "/home/username/Dropbox/Public"
+        Edit to change ntfy subscription topic
         """
         logging.error(f"config.json problem; {e}")
-        config_init_starter = {"proxies" : {"http" : "", "https": ""}}
+        config_init_starter = {"proxies" : {"http" : "", "https": ""}, "dropbox" : "", "ntfy" : "http://ntfy.sh/vla_time_lapse"}
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
          # recursion, load the config file since it wasn't found earlier
@@ -481,6 +485,42 @@ def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_second
     audio_clip.close()
     final_clip.close()
 
+def send_to_ntfy(message="Incomplete Message"):
+    global config
+    ntfy_url = config.get("ntfy")
+    headers = {'Content-Type': 'application/x-www-form-urlencoded',}
+    requests.post(ntfy_url, headers=headers, data=message)
+
+def main_sequence():
+    global config
+    dropbox_path = config.get("dropbox")
+    fps = 10
+    logging.info(f"Validating Images")
+    print("\n[i]\tValidating Images...")
+    valid_files = create_images_dict(IMAGES_FOLDER)
+    duration_threshold = calculate_video_duration(len(valid_files), fps)
+    logging.info(f"Video Duration: {duration_threshold}")
+    full_audio_path = audio_download(duration_threshold)
+    print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
+    logging.info(f"Creating Time Lapse")
+    create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
+    logging.info(f"Time Lapse Saved: {video_path}")
+    print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+    if dropbox_path and os.path.exists(dropbox_path):
+        dropbox_full_path = os.path.join(dropbox_path, os.path.basename(video_path))
+        try:
+            shutil.move(video_path, dropbox_full_path)
+            log_message = f"{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox"
+            logging.info(log_message)
+            print(f"[i]\t{log_message}")
+            send_to_ntfy(log_message)
+        except Exception as e:
+            log_message = f"{RED_CIRCLE} Failed to move file: {e}"
+            logging.error(log_message)
+            print(f"[!]\t{log_message}\n[!]\t{e}")
+            send_to_ntfy(log_message)
+
+
 def main():
     """
     The main function of the script. It orchestrates the process of downloading images,
@@ -504,7 +544,8 @@ def main():
         i = 1
         while True:
             try:
-                today_short_time = datetime.now().strftime("%H%M%S")
+                TARGET_HOUR = 19  # 24-hour format
+                TARGET_MINUTE = 0
                 SECONDS = choice(range(15,22))
                 # image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
                 image_size = downloader.download_image(session, IMAGE_URL)
@@ -520,43 +561,28 @@ def main():
                 sleep(SECONDS)
                 
                 i += 1
+                now = datetime.now()
+                if now.hour == TARGET_HOUR and now.minute == TARGET_MINUTE:
+                    main_sequence()
+                    cursor.show()
+                    sys.exit()
             except requests.exceptions.RequestException as e:
                 log_message = f"Session timeout or error detect, re-establishing session: {e}"
                 logging.error(log_jamming(log_message))
                 print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
+            finally:
+                cursor.show()
 
     except KeyboardInterrupt:
         try:
-            fps = 10
-            logging.info(f"Validating Images")
-            print("\n[i]\tValidating Images...")
-            valid_files = create_images_dict(IMAGES_FOLDER)
-            duration_threshold = calculate_video_duration(len(valid_files), fps)
-            logging.info(f"Video Duration: {duration_threshold}")
-            full_AUDIO_PATH = audio_download(duration_threshold)
-            print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
-            logging.info(f"Creating Time Lapse")
-            create_time_lapse(valid_files, video_path, fps, full_AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3)
-            logging.info(f"Time Lapse Saved: {video_path}")
-            print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+            main_sequence()
 
         except Exception as e:
             logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
             print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
-            fps = 10
-            logging.info(f"Validating Images")
-            print("\n[i]\tValidating Images...")
-            valid_files = create_images_dict(IMAGES_FOLDER)
-            duration_threshold = calculate_video_duration(len(valid_files), fps)
-            logging.info(f"Video Duration: {duration_threshold}")
-            full_AUDIO_PATH = audio_download(duration_threshold)
-            print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
-            logging.info(f"Creating Time Lapse")
-            create_time_lapse(valid_files, video_path, fps, full_AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3)
-            logging.info(f"Time Lapse Saved: {video_path}")
-            print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+            main_sequence()
         finally:
             cursor.show()
 
