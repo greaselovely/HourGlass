@@ -48,8 +48,8 @@ LOG_FILE_NAME = "vla_log.txt"
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
 
 # Ensure directories exist
-for folder in [LOGGING_FOLDER, AUDIO_PATH, IMAGES_FOLDER, VIDEO_FOLDER]:
-    folder.mkdir(parents=True, exist_ok=True)
+for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_PATH]:
+    os.makedirs(folder, exist_ok=True)
 
 # Using dynamic date for file names
 video_path = VIDEO_FOLDER / f"VLA.{today_short_date}.mp4"
