@@ -71,9 +71,6 @@ USER_AGENTS = [
     "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36"
 ]
 
-
-
-
 logging.basicConfig(
     level = logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
     filename = LOGGING_FILE,
@@ -460,51 +457,33 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
 
 def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3):
     """
-    Creates a time-lapse video from a series of images, featuring fade-in from black, and adds an audio track with fade-in at the beginning and fade-out at the end.
+    Creates a time-lapse video from a series of images, incorporating a fade-in effect from black at the start and adding an audio track with fade-in at the beginning and fade-out at the end. The video concludes with a fade-out to black, followed by a still black screen for a specified duration.
+
     Args:
-        valid_files (list): List of paths to image files for the time-lapse.
-        output_path (str): Path where the time-lapse video will be saved.
-        fps (int): Frames per second for the video.
-        AUDIO_PATH (str): Path to the audio file to be used in the video.
-        crossfade_seconds (int, optional): Duration of the crossfade to black at the video's end.
-        end_black_seconds (int, optional): Duration of the black screen at the video's end.
+        valid_files (list of str or pathlib.Path): List of paths to image files for creating the time-lapse. Each item in the list can be either a string path or a pathlib.Path object.
+        video_path (str or pathlib.Path): Path where the time-lapse video will be saved. Can be either a string path or a pathlib.Path object.
+        fps (int): Frames per second for the time-lapse video.
+        AUDIO_PATH (str or pathlib.Path): Path to the audio file to be used as the video's soundtrack. Can be either a string path or a pathlib.Path object.
+        crossfade_seconds (int, optional): Duration in seconds of the crossfade to black at the video's end. Defaults to 3 seconds.
+        end_black_seconds (int, optional): Duration in seconds of the still black screen added at the video's end, after the crossfade. Defaults to 3 seconds.
+
+    The function generates a video file at the specified `video_path` by sequencing the provided images at the given framerate (`fps`), applying audio from `AUDIO_PATH`, and incorporating the specified visual effects for transitions and ending.
     """
     video_path = str(video_path)
     AUDIO_PATH = str(AUDIO_PATH)
     valid_files = [str(file) for file in valid_files]
 
-    # Create the video clip from images
     video_clip = ImageSequenceClip(valid_files, fps=fps)
-
-    # Load the audio file
     audio_clip = AudioFileClip(AUDIO_PATH)
-
-    # Calculate total video duration
     total_video_duration = video_clip.duration
-
-    # Add a fade-in from black effect to the video
     video_clip = video_clip.fadein(crossfade_seconds)
-
-    # Add a fade-out to black effect to the video
     video_clip = video_clip.fadeout(crossfade_seconds)
-
-    # Cut the audio to match the video duration (if longer)
     audio_clip = audio_clip.subclip(0, total_video_duration)
-
-    # Apply audio fade-in and fade-out effects
     audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
-
-    # Set the processed audio to the video
     video_clip = video_clip.set_audio(audio_clip)
-
-    # Add end black screen to the video by creating a black frame and concatenating it to the end
     black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
     final_clip = concatenate_videoclips([video_clip, black_frame_clip])
-
-    # Write the final video file to disk
     final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac")
-
-    # Release resources
     video_clip.close()
     audio_clip.close()
     final_clip.close()
