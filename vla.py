@@ -52,7 +52,7 @@ for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_PATH
     os.makedirs(folder, exist_ok=True)
 
 # Using dynamic date for file names
-video_path = VIDEO_FOLDER / f"VLA.{today_short_date}.mp4"
+video_path = os.path.join(VIDEO_FOLDER,f"VLA.{today_short_date}.mp4")
 
 IMAGE_URL = "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg"
 WEBPAGE = "https://public.nrao.edu/vla-webcam/"
