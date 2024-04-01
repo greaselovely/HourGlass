@@ -567,7 +567,7 @@ def main():
                 
                 i += 1
                 now = datetime.now()
-                if now.hour == TARGET_HOUR and now.minute == TARGET_MINUTE:
+                if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
                     main_sequence()
                     cursor.show()
                     sys.exit()
