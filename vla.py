@@ -422,7 +422,10 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
             song_duration = song.get('duration', 0)
             attempts += 1
             if attempts > 10:
-                print(f"[!]\tIt's possible there are no songs")
+                log_message = "Out of Songs, trying a new list"
+                logging.info(log_message)
+                print(f"[!]\t{log_message}")
+                return None
             
         
         if song_duration <= duration_threshold:
@@ -501,6 +504,8 @@ def main_sequence():
     duration_threshold = calculate_video_duration(len(valid_files), fps)
     logging.info(f"Video Duration: {duration_threshold}")
     full_audio_path = audio_download(duration_threshold)
+    if not full_audio_path:
+        full_audio_path = audio_download(duration_threshold)
     print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
     logging.info(f"Creating Time Lapse")
     create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
