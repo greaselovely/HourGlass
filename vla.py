@@ -2,6 +2,7 @@ import os
 import cv2
 import sys
 import json
+import glob
 import cursor
 import shutil
 import hashlib
@@ -488,6 +489,14 @@ def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_second
     audio_clip.close()
     final_clip.close()
 
+def cleanup(path):
+    files = glob.glob(path + '*')
+    for file in files:
+        os.remove(file)
+    log_message = "All images have been removed."
+    print(f"[i]\t{log_message}")
+    logging.info(log_message)
+
 def send_to_ntfy(message="Incomplete Message"):
     global config
     ntfy_url = config.get("ntfy")
@@ -515,10 +524,21 @@ def main_sequence():
         dropbox_full_path = os.path.join(dropbox_path, os.path.basename(video_path))
         try:
             shutil.move(video_path, dropbox_full_path)
-            log_message = f"{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox"
+            log_message = f"{GREEN_CIRCLE} {os.path.basename(video_path)}\nmoved to Dropbox"
             logging.info(log_message)
             print(f"[i]\t{log_message}")
             send_to_ntfy(log_message)
+            if os.path.exists(dropbox_full_path):
+                cleanup(IMAGES_FOLDER)
+                images = sorted([img for img in os.listdir(IMAGES_FOLDER) if img.endswith(".jpg")]) 
+                if len(images) == 0:
+                    log_message = f"{GREEN_CIRCLE} Image cleanup"
+                else:
+                    log_message = f"{RED_CIRCLE} Image cleanup"
+                print(f"[i]\t{log_message}")
+                logging.info(log_message)
+
+
         except Exception as e:
             log_message = f"{RED_CIRCLE} Failed to move file: {e}"
             logging.error(log_message)
