@@ -21,10 +21,7 @@ from random import choice
 from wurlitzer import pipes
 from datetime import datetime
 from http.client import IncompleteRead
-
-
-
-from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -44,11 +41,11 @@ VLA_BASE = os.path.join(HOME, "VLA")
 VIDEO_FOLDER = os.path.join(VLA_BASE, "video")
 IMAGES_FOLDER = os.path.join(VLA_BASE, "images")
 LOGGING_FOLDER = os.path.join(VLA_BASE, "logging")
-AUDIO_PATH = os.path.join(VLA_BASE, "audio")
+AUDIO_FOLDER = os.path.join(VLA_BASE, "audio")
 LOG_FILE_NAME = "vla_log.txt"
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
 
-for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_PATH]:
+for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER]:
     os.makedirs(folder, exist_ok=True)
 
 video_path = os.path.join(VIDEO_FOLDER,f"VLA.{today_short_date}.mp4")
@@ -174,11 +171,10 @@ def load_config():
         config_init_starter = {"proxies" : {"http" : "", "https": ""}, "dropbox" : "", "ntfy" : "http://ntfy.sh/vla_time_lapse"}
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
-         # recursion, load the config file since it wasn't found earlier
+        # recursion, load the config file since it wasn't found earlier
         return load_config()
     except json.JSONDecodeError as e:
-        logging.error(f"JSON Decode error: {e}")
-        print(f"Error decoding JSON in '{config_path}'.")
+        message_processor(f"Error decoding JSON in '{config_path}'.", log_level="error")
         return None
 
 def clear():
@@ -213,18 +209,25 @@ def log_jamming(log_message):
 
     This will return a formatted string that looks like this in the output (example):
     2024-03-30 19:36:24,025 - INFO - Session Created: {'mailchimp_landing_site': 'https%3A%2F%2Fpublic.nrao.edu%2Fvla-
-                                  webcam%2F'}, ValuesView({'User-Agent': 'Mozilla/5.0
-                                  (iPhone; CPU iPhone OS 15_0 like Mac OS X)
-                                  AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0
-                                  Mobile/15E148 Safari/604.1', 'Accept-Encoding': 'gzip,
-                                  deflate', 'Accept': '*/*', 'Connection': 'keep-alive',
-                                  'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                  'Pragma': 'no-cache', 'Expires': '0'})
+                                webcam%2F'}, ValuesView({'User-Agent': 'Mozilla/5.0
+                                (iPhone; CPU iPhone OS 15_0 like Mac OS X)
+                                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0
+                                Mobile/15E148 Safari/604.1', 'Accept-Encoding': 'gzip,
+                                deflate', 'Accept': '*/*', 'Connection': 'keep-alive',
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache', 'Expires': '0'})
     """
     log_preface = 34  # This is the length of the date, time, and info log preface
     return textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * log_preface)
 
-# def activity(char, images_folder, image_size, time_stamp=""):
+def message_processor(message, log_level="info", ntfy=False, print_me=True):
+    if print_me:
+        print(message)
+    log_func = getattr(logging, log_level, logging.info)
+    log_func(message)
+    if ntfy:
+        send_to_ntfy(message[10:])
+
 def activity(char, images_folder, image_size, time_stamp=""):
     """
     Displays the current status of the image downloading activity in the terminal.
@@ -243,7 +246,6 @@ def activity(char, images_folder, image_size, time_stamp=""):
     clear()
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
-    # print(f"Time Stamp: {time_stamp}\nIter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
     print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
 def create_session(webpage, verify=False):
@@ -295,7 +297,7 @@ def make_request(session, verify=False):
 
     Returns:
         requests.Response or None: The response object if the request is successful, 
-                                   None if there are connection errors or exceptions.
+                                None if there are connection errors or exceptions.
     """
     global config
     proxies = config.get('proxies', {})
@@ -314,8 +316,8 @@ def make_request(session, verify=False):
                 return response
         except IncompleteRead as e:
             log_message = f"Incomplete Read (make_request()): {e}"
-            logging.error(log_jamming(log_message))
-            print(f"IncompleteRead Error: {e}")
+            message = log_jamming(log_message)
+            message_processor(message, log_level="error")
             return None
         except requests.RequestException as e:
             log_message = f"Incomplete Read (make_request()): {e}"
@@ -327,31 +329,50 @@ def make_request(session, verify=False):
 def create_images_dict(images_folder) -> list:
     """
     Creates a dictionary of image file paths from the specified folder, filtered by the provided date.
-
-    This function filters images by the date included in their filenames, processes each image using cv2 
-    to check for errors, and compiles a list of valid image file paths. It uses wurlitzer pipes to capture 
-    any error messages from cv2. Images with errors detected by cv2 are excluded from the returned list.
+    This function first checks if 'valid_images.json' exists in the folder and reads from it if it does.
+    If it does not exist, it filters images by the date included in their filenames, processes each image using cv2 
+    to check for errors, and compiles a list of valid image file paths. Images with errors detected by cv2 are excluded.
+    The valid images are then saved to 'valid_images.json' in the same directory.
 
     Args:
         images_folder (str): The directory where the images are stored.
-        today_short_date (str): The date string used to filter images relevant to the current day.
 
     Returns:
         list: A list of valid image file paths, excluding any that cv2 identifies as having errors.
     """
-    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")]) 
+    valid_images_path = Path(images_folder) / "valid_images.json"
+    
+    # Check if the valid_images.json file exists and is not empty
+    if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
+        try:
+            with open(valid_images_path, 'r') as file:
+                valid_files = json.load(file)
+                message = f"[i]\tExisting Validation Used"
+                message_processor(message, 'info')
+                return valid_files
+        except json.JSONDecodeError:
+            message = f"[!]\tError decoding JSON, possibly corrupted file."
+            message_processor(message, 'error')
+    
+    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
     images_dict = {}
-
+    
     for n, image in enumerate(images):
         print(f"[i]\t{n}", end='\r')
-        full_image = os.path.join(images_folder, image)
+        full_image = Path(images_folder) / image
         with pipes() as (out, err):
-            cv2.imread(full_image)
+            img = cv2.imread(str(full_image))
         err.seek(0)
         error_message = err.read()
-        images_dict[full_image] = error_message
+        if error_message == "":
+            images_dict[str(full_image)] = error_message
 
-    valid_files = [file_path for file_path, error_message in images_dict.items() if error_message == ""]
+    valid_files = list(images_dict.keys())
+    
+    # Save the valid image paths to a JSON file
+    with open(valid_images_path, 'w') as file:
+        json.dump(valid_files, file)
+
     return valid_files
 
 def calculate_video_duration(num_images, fps) -> int:
@@ -369,7 +390,7 @@ def calculate_video_duration(num_images, fps) -> int:
     duration_ms = int(duration_sec * 1000)
     return duration_ms
 
-def audio_download(duration_threshold=150000) -> tuple[str, str]:
+def single_song_download():
     """
     Downloads a random song from a specified URL, meeting a minimum duration criterion.
 
@@ -385,7 +406,7 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
 
     Returns:
     - tuple: A tuple containing the name of the downloaded audio file and its full path. 
-             Returns None if no song meeting the criteria could be found or if an error occurs.
+            Returns None if no song meeting the criteria could be found or if an error occurs.
 
     Raises:
     - requests.RequestException: If an HTTP request error occurs during the song selection or download process.
@@ -416,23 +437,10 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
         song_duration = song.get('duration', 0)
         
         # If the song duration is less than the duration_threshold, retry fetching a song
-        attempts = 1
-        while song_duration <= duration_threshold:
-            print(f"[i]\tSong Attempts: {attempts}", end='\r')
-            song = choice(songs)
-            song_duration = song.get('duration', 0)
-            attempts += 1
-            if attempts > 10:
-                log_message = "Out of Songs, trying a new list"
-                logging.info(log_message)
-                print(f"[!]\t{log_message}")
-                return None
-            
-        
-        if song_duration <= duration_threshold:
-            print(f"\n\n[!]\tFailed to find a song longer than {duration_threshold}. Exiting.\n\n")
-            sys.exit()
-        
+
+        song = choice(songs)
+        song_duration = song.get('duration', 0)
+
         song_download_path = song.get('music_file_path')
         if not song_download_path:
             print("Song download path not found.")
@@ -446,56 +454,131 @@ def audio_download(duration_threshold=150000) -> tuple[str, str]:
         song_name = song.get('title', 'Unknown Song').replace('/', '_')  # Replace slashes to avoid path issues
         audio_name = f"{song_name}.mp3"
 
-        full_audio_path = os.path.join(AUDIO_PATH, audio_name)
+        full_audio_path = os.path.join(AUDIO_FOLDER, audio_name)
         
         with open(full_audio_path, 'wb') as f:
             f.write(r.content)
             
         print(f"[>]\tDownloaded: {audio_name}")
 
-
-        return full_audio_path
+        return full_audio_path, song_duration
     
     except requests.RequestException as e:
         print(f"[!]\tAn error occurred:\n[!]\t{e}")
 
-def create_time_lapse(valid_files, video_path, fps, AUDIO_PATH, crossfade_seconds=3, end_black_seconds=3):
+def audio_download(video_duration) -> list:
     """
-    Creates a time-lapse video from a series of images, incorporating a fade-in effect from black at the start and adding an audio track with fade-in at the beginning and fade-out at the end. The video concludes with a fade-out to black, followed by a still black screen for a specified duration.
-
+    Downloads multiple songs, ensuring their total duration covers the video duration. Splits playtime evenly.
+    
     Args:
-        valid_files (list of str or pathlib.Path): List of paths to image files for creating the time-lapse. Each item in the list can be either a string path or a pathlib.Path object.
-        video_path (str or pathlib.Path): Path where the time-lapse video will be saved. Can be either a string path or a pathlib.Path object.
-        fps (int): Frames per second for the time-lapse video.
-        AUDIO_PATH (str or pathlib.Path): Path to the audio file to be used as the video's soundtrack. Can be either a string path or a pathlib.Path object.
-        crossfade_seconds (int, optional): Duration in seconds of the crossfade to black at the video's end. Defaults to 3 seconds.
-        end_black_seconds (int, optional): Duration in seconds of the still black screen added at the video's end, after the crossfade. Defaults to 3 seconds.
-
-    The function generates a video file at the specified `video_path` by sequencing the provided images at the given framerate (`fps`), applying audio from `AUDIO_PATH`, and incorporating the specified visual effects for transitions and ending.
+        video_duration (int): Required total audio duration in milliseconds.
+        audio_folder (str or Path): Directory to save the downloaded audio files.
+        user_agents (list): List of user agent strings to use for requests.
+        
+    Returns:
+        str: Path to the concatenated audio file that meets the video duration, or None if unsuccessful.
     """
+    songs = []
+    total_duration = 0  # total duration in seconds
+    attempts = 0
+    max_attempts = 10
+    while total_duration < video_duration / 1000 and attempts < max_attempts:
+        song_path, song_duration_ms = single_song_download()
+        if song_path:
+            songs.append((song_path, song_duration_ms / 1000))  # Store duration in seconds
+            total_duration += song_duration_ms / 1000
 
+        attempts += 1
+
+    if total_duration < video_duration / 1000:  # Check if the combined duration is sufficient
+        print("Failed to download sufficient audio length.")
+        return None
+    
+    return songs
+    
+def concatenate_songs(songs, crossfade_seconds=3):
+    """
+    Concatenates multiple AudioFileClip objects with manual crossfade.
+    
+    Args:
+        songs (list of tuples): List of tuples, each containing the path to an audio file and its duration.
+        crossfade_seconds (int): Duration of crossfade between clips.
+    
+    Returns:
+        AudioFileClip or None: The concatenated audio clip.
+    """
+    if not songs:
+        message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
+        return None
+    
+    clips = []
+    for song in songs:
+        if isinstance(song, tuple) and len(song) > 0:
+            song_path = song[0]  # Assuming the file path is the first element in the tuple
+            try:
+                clip = AudioFileClip(song_path)
+                clips.append(clip)
+            except Exception as e:
+                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error")
+                sys.exit(1)
+                
+        else:
+            message_processor("[!]\tInvalid song data format.", log_level="error")
+
+    if clips:
+        # Manually handle crossfade
+        if len(clips) > 1:
+            # Adjust the start time of each subsequent clip to create overlap for crossfade
+            for i in range(1, len(clips)):
+                clips[i] = clips[i].set_start(clips[i-1].end - crossfade_seconds)
+            final_clip = concatenate_audioclips(clips)
+        else:
+            final_clip = clips[0]
+
+        return final_clip
+
+    return None
+
+def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_seconds=3, end_black_seconds=3):
     video_clip = ImageSequenceClip(valid_files, fps=fps)
-    audio_clip = AudioFileClip(AUDIO_PATH)
-    total_video_duration = video_clip.duration
-    video_clip = video_clip.fadein(crossfade_seconds)
-    video_clip = video_clip.fadeout(crossfade_seconds)
-    audio_clip = audio_clip.subclip(0, total_video_duration)
+    
+    # Check if audio_input is a string (path) or an AudioClip
+    if isinstance(audio_input, str):
+        audio_clip = AudioFileClip(audio_input).subclip(0, video_clip.duration)
+    elif hasattr(audio_input, 'audio_fadein'):
+        # Assume audio_input is already an AudioClip if it has audio_fadein method
+        audio_clip = audio_input.subclip(0, video_clip.duration)
+    else:
+        raise ValueError("Invalid audio input: must be a file path or an AudioClip")
+    
     audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
     video_clip = video_clip.set_audio(audio_clip)
+    video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
+
     black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
     final_clip = concatenate_videoclips([video_clip, black_frame_clip])
     final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac")
+
     video_clip.close()
     audio_clip.close()
     final_clip.close()
 
 def cleanup(path):
-    files = glob.glob(path + '*')
-    for file in files:
-        os.remove(file)
-    log_message = "All images have been removed."
-    print(f"[i]\t{log_message}")
-    logging.info(log_message)
+    """
+    Removes a directory along with all its contents.
+
+    Args:
+        directory_path (str or Path): The path to the directory to remove.
+    """
+    directory_path = Path(path)  # Ensure it's a Path object for consistency
+    try:
+        if directory_path.is_dir():  # Check if it's a directory
+            shutil.rmtree(directory_path)
+            message_processor(f"[i]\tAll contents of {directory_path} have been removed.")
+        else:
+            message_processor(f"[i]\tNo directory found at {directory_path}. Nothing to remove.")
+    except Exception as e:
+        message_processor(f"[!]\tFailed to remove {directory_path}: {e}")
 
 def send_to_ntfy(message="Incomplete Message"):
     global config
@@ -507,44 +590,35 @@ def main_sequence():
     global config
     dropbox_path = config.get("dropbox")
     fps = 10
-    logging.info(f"Validating Images")
-    print("\n[i]\tValidating Images...")
+
+    message_processor("\n[i]\tValidating Images...")
     valid_files = create_images_dict(IMAGES_FOLDER)
     duration_threshold = calculate_video_duration(len(valid_files), fps)
-    logging.info(f"Video Duration: {duration_threshold}")
+    message_processor(f"Video Duration: {duration_threshold}", print_me=False)
+    
     full_audio_path = audio_download(duration_threshold)
-    if not full_audio_path:
-        full_audio_path = audio_download(duration_threshold)
-    print(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
-    logging.info(f"Creating Time Lapse")
-    create_time_lapse(valid_files, video_path, fps, full_audio_path, crossfade_seconds=3, end_black_seconds=3)
-    logging.info(f"Time Lapse Saved: {video_path}")
-    print(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+    if len(full_audio_path) >= 2:
+        final_song = concatenate_songs(full_audio_path)
+    else:
+        final_song = full_audio_path
+
+    message_processor(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
+    
+    create_time_lapse(valid_files, video_path, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
+    
+    message_processor(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
+
     if dropbox_path and os.path.exists(dropbox_path):
         dropbox_full_path = os.path.join(dropbox_path, os.path.basename(video_path))
         try:
             shutil.move(video_path, dropbox_full_path)
-            log_message = f"{GREEN_CIRCLE} {os.path.basename(video_path)}\nmoved to Dropbox"
-            logging.info(log_message)
-            print(f"[i]\t{log_message}")
-            send_to_ntfy(log_message)
+            message_processor(f"[i]\t{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox", ntfy=True)
             if os.path.exists(dropbox_full_path):
                 cleanup(IMAGES_FOLDER)
-                images = sorted([img for img in os.listdir(IMAGES_FOLDER) if img.endswith(".jpg")]) 
-                if len(images) == 0:
-                    log_message = f"{GREEN_CIRCLE} Image cleanup"
-                else:
-                    log_message = f"{RED_CIRCLE} Image cleanup"
-                print(f"[i]\t{log_message}")
-                logging.info(log_message)
-
+                cleanup(AUDIO_FOLDER)
 
         except Exception as e:
-            log_message = f"{RED_CIRCLE} Failed to move file: {e}"
-            logging.error(log_message)
-            print(f"[!]\t{log_message}\n[!]\t{e}")
-            send_to_ntfy(log_message)
-
+            message_processor(f"{RED_CIRCLE} Failed to move file: {e}", log_level="error", ntfy=True)
 
 def main():
     """
@@ -594,7 +668,7 @@ def main():
             except requests.exceptions.RequestException as e:
                 log_message = f"Session timeout or error detect, re-establishing session: {e}"
                 logging.error(log_jamming(log_message))
-                print(f"Session timeout or error detect, re-establishing session...\n{e}\n")
+                message_processor(f"Session timeout or error detect, re-establishing session...\n{e}\n", log_level="error")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
             finally:
@@ -605,8 +679,7 @@ def main():
             main_sequence()
 
         except Exception as e:
-            logging.error(f"Keyboard Interrupt; Image Processing Problem: {e}")
-            print(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
+            message_processor(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
             main_sequence()
         finally:
             cursor.show()
