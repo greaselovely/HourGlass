@@ -2,7 +2,7 @@ import os
 import cv2
 import sys
 import json
-import glob
+# import glob
 import cursor
 import shutil
 import hashlib
@@ -25,14 +25,6 @@ from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videocl
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-"""
-TO DO
--clean up function
-    wait to allow the video to be reviewed
-    asking if we want to remove the images
-
-"""
 
 today_short_date = datetime.now().strftime("%m%d%Y")
 
@@ -612,8 +604,8 @@ def main_sequence():
         dropbox_full_path = os.path.join(dropbox_path, os.path.basename(video_path))
         try:
             shutil.move(video_path, dropbox_full_path)
-            message_processor(f"[i]\t{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox", ntfy=True)
             if os.path.exists(dropbox_full_path):
+                message_processor(f"[i]\t{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox", ntfy=True)
                 cleanup(IMAGES_FOLDER)
                 cleanup(AUDIO_FOLDER)
 
