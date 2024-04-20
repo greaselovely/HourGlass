@@ -218,7 +218,7 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
     log_func = getattr(logging, log_level, logging.info)
     log_func(message)
     if ntfy:
-        send_to_ntfy(message[10:])
+        send_to_ntfy(message[6:])
 
 def activity(char, images_folder, image_size, time_stamp=""):
     """
@@ -592,7 +592,8 @@ def main_sequence():
     if len(full_audio_path) >= 2:
         final_song = concatenate_songs(full_audio_path)
     else:
-        final_song = full_audio_path
+        final_song = full_audio_path[0][0]
+
 
     message_processor(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
     

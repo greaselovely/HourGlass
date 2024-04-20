@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Base configuration
 fps = 10
-video_length_seconds = 255  # 4 minutes and 15 seconds
+video_length_seconds = 120
 number_of_images = fps * video_length_seconds
 
 # Set the directories under the user's home directory
