@@ -515,7 +515,7 @@ def concatenate_songs(songs, crossfade_seconds=3):
                 sys.exit(1)
                 
         else:
-            message_processor("[!]\tInvalid song data format.", log_level="error")
+            message_processor("[!]\tInvalid song data format.", log_level="error", ntfy=True)
 
     if clips:
         # Manually handle crossfade
@@ -606,12 +606,12 @@ def main_sequence():
         try:
             shutil.move(video_path, dropbox_full_path)
             if os.path.exists(dropbox_full_path):
-                message_processor(f"[i]\t{GREEN_CIRCLE} {os.path.basename(video_path)} moved to Dropbox", ntfy=True)
+                message_processor(f"{os.path.basename(video_path)} moved to Dropbox", ntfy=True)
                 cleanup(IMAGES_FOLDER)
                 cleanup(AUDIO_FOLDER)
 
         except Exception as e:
-            message_processor(f"{RED_CIRCLE} Failed to move file: {e}", log_level="error", ntfy=True)
+            message_processor(f"Failed to move file: {e}", log_level="error", ntfy=True)
 
 def main():
     """
