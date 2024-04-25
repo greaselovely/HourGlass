@@ -218,7 +218,7 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
     log_func = getattr(logging, log_level, logging.info)
     log_func(message)
     if ntfy:
-        send_to_ntfy(message[6:])
+        send_to_ntfy(message)
 
 def activity(char, images_folder, image_size, time_stamp=""):
     """
