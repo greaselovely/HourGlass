@@ -511,7 +511,7 @@ def concatenate_songs(songs, crossfade_seconds=3):
                 clip = AudioFileClip(song_path)
                 clips.append(clip)
             except Exception as e:
-                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error")
+                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error", ntfy=True)
                 sys.exit(1)
                 
         else:
