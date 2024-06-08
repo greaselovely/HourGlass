@@ -1,4 +1,5 @@
 import os
+import re
 import cv2
 import sys
 import json
@@ -19,9 +20,11 @@ from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
-from datetime import datetime
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 from http.client import IncompleteRead
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
+
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -578,6 +581,27 @@ def send_to_ntfy(message="Incomplete Message"):
     headers = {'Content-Type': 'application/x-www-form-urlencoded',}
     requests.post(ntfy_url, headers=headers, data=message)
 
+def fetch_html(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an HTTPError for bad responses
+        return response.text
+    except requests.RequestException as e:
+        print(f"Error fetching the HTML content from {url}: {e}")
+        return None
+
+def find_time_and_convert(soup, text, default_time_str):
+    if soup is not None:
+        element = soup.find('th', string=lambda x: x and text in x)
+        if element and element.find_next_sibling('td'):
+            time_text = element.find_next_sibling('td').text
+            time_match = re.search(r'\d+:\d+\s(?:am|pm)', time_text)
+            if time_match:
+                return datetime.strptime(time_match.group(), '%I:%M %p').time()
+    return datetime.strptime(default_time_str, '%H:%M:%S').time()
+
+
+
 def main_sequence():
     global config
     dropbox_path = config.get("dropbox")
@@ -613,6 +637,91 @@ def main_sequence():
         except Exception as e:
             message_processor(f"Failed to move file: {e}", log_level="error", ntfy=True)
 
+# def main():
+#     """
+#     The main function of the script. It orchestrates the process of downloading images,
+#     creating a time-lapse video, and handling exceptions.
+
+#     This function sets up the necessary folders, initializes a session, and continuously
+#     downloads images at a set interval. In case of a keyboard interrupt, it proceeds to 
+#     validate the downloaded images and create a time-lapse video from them. Any errors 
+#     encountered during image processing or video creation are logged and displayed.
+#     """
+#     try:
+#         clear()
+#         cursor.hide()
+#         global config
+#         # breakpoint()
+#         config = load_config()
+        
+#         time_url = "https://www.timeanddate.com/sun/@5481136"
+
+#         html_content = fetch_html(time_url)
+
+#         if html_content:
+#             soup = BeautifulSoup(html_content, 'html.parser')
+#         else:
+#             soup = None
+#         sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', '06:00:00')
+#         sunset_time = find_time_and_convert(soup, 'Sunset Today:', '19:00:00')
+
+#         now = datetime.now()
+#         current_time = now.time()
+        
+#         sleep_timer = (sunrise_time - current_time).total_seconds()
+
+#         if sleep_timer < 0: sleep_timer = 0
+
+#         sleep(sleep_timer) # wait for sunrise or start right away if it's past sunrise
+
+#         session = create_session(WEBPAGE)
+        
+#         downloader = ImageDownloader(session, IMAGES_FOLDER)
+
+#         i = 1
+#         while True:
+#             try:
+#                 TARGET_HOUR = sunset_time.hour
+#                 TARGET_MINUTE = sunset_time.minute
+#                 SECONDS = choice(range(15,22))  # sleep timer seconds
+#                 # image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
+#                 image_size = downloader.download_image(session, IMAGE_URL)
+#                 # If we don't save the image because the hash is the same
+#                 # then the image_size is None.  This is strictly console
+#                 # notification and probably should be deprecated.
+#                 if image_size is not None: 
+#                     # activity(i, IMAGES_FOLDER, image_size, time_stamp)
+#                     activity(i, IMAGES_FOLDER, image_size)
+#                 else:
+#                     clear()
+#                     print(f"{RED_CIRCLE} Iteration: {i}")
+#                 sleep(SECONDS)
+                
+#                 i += 1
+#                 now = datetime.now()
+#                 if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
+#                     main_sequence()
+#                     cursor.show()
+#                     sys.exit()
+#             except requests.exceptions.RequestException as e:
+#                 log_message = f"Session timeout or error detect, re-establishing session: {e}"
+#                 logging.error(log_jamming(log_message))
+#                 message_processor(f"Session timeout or error detect, re-establishing session...\n{e}\n", log_level="error")
+#                 session = create_session(WEBPAGE)
+#                 downloader.download_image(session, IMAGE_URL)
+#             finally:
+#                 cursor.show()
+
+#     except KeyboardInterrupt:
+#         try:
+#             main_sequence()
+
+#         except Exception as e:
+#             message_processor(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
+#             main_sequence()
+#         finally:
+#             cursor.show()
+
 def main():
     """
     The main function of the script. It orchestrates the process of downloading images,
@@ -628,7 +737,38 @@ def main():
         cursor.hide()
         global config
         config = load_config()
-                
+        
+        time_url = "https://www.timeanddate.com/sun/@5481136"
+
+        html_content = fetch_html(time_url)
+
+        if html_content:
+            soup = BeautifulSoup(html_content, 'html.parser')
+        else:
+            soup = None
+
+        sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', '06:00:00')
+        sunset_time = find_time_and_convert(soup, 'Sunset Today:', '19:00:00')
+
+        now = datetime.now()
+
+        # Combine the current date with the sunrise time to get a datetime object
+        sunrise_datetime = datetime.combine(now.date(), sunrise_time)
+        if now.time() > sunrise_time:
+            # If the current time is past sunrise, set the next sunrise to the next day
+            sunrise_datetime += timedelta(days=1)
+
+        # Calculate the time difference in seconds
+        time_diff = (now - sunrise_datetime).total_seconds()
+
+        # Set sleep_timer to 0 if time_diff is negative
+        sleep_timer = max(time_diff, 0)
+
+        if sleep_timer >= 1:
+            message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", print_me=True)
+            sleep(sleep_timer)
+            message_processor(f"Woke up! The current time is {datetime.now().time()}.", print_me=True)
+
         session = create_session(WEBPAGE)
         
         downloader = ImageDownloader(session, IMAGES_FOLDER)
@@ -636,20 +776,18 @@ def main():
         i = 1
         while True:
             try:
-                TARGET_HOUR = 19  # 24-hour format
-                TARGET_MINUTE = 0
-                SECONDS = choice(range(15,22))
-                # image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
+                TARGET_HOUR = sunset_time.hour
+                TARGET_MINUTE = sunset_time.minute
+                breakpoint()
+                SECONDS = choice(range(15, 22))  # sleep timer seconds
+
                 image_size = downloader.download_image(session, IMAGE_URL)
-                # If we don't save the image because the hash is the same
-                # then the image_size is None.  This is strictly console
-                # notification and probably should be deprecated.
-                if image_size is not None: 
-                    # activity(i, IMAGES_FOLDER, image_size, time_stamp)
+                if image_size is not None:
                     activity(i, IMAGES_FOLDER, image_size)
                 else:
                     clear()
                     print(f"{RED_CIRCLE} Iteration: {i}")
+
                 sleep(SECONDS)
                 
                 i += 1
@@ -659,9 +797,9 @@ def main():
                     cursor.show()
                     sys.exit()
             except requests.exceptions.RequestException as e:
-                log_message = f"Session timeout or error detect, re-establishing session: {e}"
+                log_message = f"Session timeout or error detected, re-establishing session: {e}"
                 logging.error(log_jamming(log_message))
-                message_processor(f"Session timeout or error detect, re-establishing session...\n{e}\n", log_level="error")
+                message_processor(f"Session timeout or error detected, re-establishing session...\n{e}\n", log_level="error")
                 session = create_session(WEBPAGE)
                 downloader.download_image(session, IMAGE_URL)
             finally:
@@ -670,7 +808,6 @@ def main():
     except KeyboardInterrupt:
         try:
             main_sequence()
-
         except Exception as e:
             message_processor(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
             main_sequence()
