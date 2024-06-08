@@ -637,90 +637,6 @@ def main_sequence():
         except Exception as e:
             message_processor(f"Failed to move file: {e}", log_level="error", ntfy=True)
 
-# def main():
-#     """
-#     The main function of the script. It orchestrates the process of downloading images,
-#     creating a time-lapse video, and handling exceptions.
-
-#     This function sets up the necessary folders, initializes a session, and continuously
-#     downloads images at a set interval. In case of a keyboard interrupt, it proceeds to 
-#     validate the downloaded images and create a time-lapse video from them. Any errors 
-#     encountered during image processing or video creation are logged and displayed.
-#     """
-#     try:
-#         clear()
-#         cursor.hide()
-#         global config
-#         # breakpoint()
-#         config = load_config()
-        
-#         time_url = "https://www.timeanddate.com/sun/@5481136"
-
-#         html_content = fetch_html(time_url)
-
-#         if html_content:
-#             soup = BeautifulSoup(html_content, 'html.parser')
-#         else:
-#             soup = None
-#         sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', '06:00:00')
-#         sunset_time = find_time_and_convert(soup, 'Sunset Today:', '19:00:00')
-
-#         now = datetime.now()
-#         current_time = now.time()
-        
-#         sleep_timer = (sunrise_time - current_time).total_seconds()
-
-#         if sleep_timer < 0: sleep_timer = 0
-
-#         sleep(sleep_timer) # wait for sunrise or start right away if it's past sunrise
-
-#         session = create_session(WEBPAGE)
-        
-#         downloader = ImageDownloader(session, IMAGES_FOLDER)
-
-#         i = 1
-#         while True:
-#             try:
-#                 TARGET_HOUR = sunset_time.hour
-#                 TARGET_MINUTE = sunset_time.minute
-#                 SECONDS = choice(range(15,22))  # sleep timer seconds
-#                 # image_size, time_stamp = downloader.download_image(session, IMAGE_URL)
-#                 image_size = downloader.download_image(session, IMAGE_URL)
-#                 # If we don't save the image because the hash is the same
-#                 # then the image_size is None.  This is strictly console
-#                 # notification and probably should be deprecated.
-#                 if image_size is not None: 
-#                     # activity(i, IMAGES_FOLDER, image_size, time_stamp)
-#                     activity(i, IMAGES_FOLDER, image_size)
-#                 else:
-#                     clear()
-#                     print(f"{RED_CIRCLE} Iteration: {i}")
-#                 sleep(SECONDS)
-                
-#                 i += 1
-#                 now = datetime.now()
-#                 if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
-#                     main_sequence()
-#                     cursor.show()
-#                     sys.exit()
-#             except requests.exceptions.RequestException as e:
-#                 log_message = f"Session timeout or error detect, re-establishing session: {e}"
-#                 logging.error(log_jamming(log_message))
-#                 message_processor(f"Session timeout or error detect, re-establishing session...\n{e}\n", log_level="error")
-#                 session = create_session(WEBPAGE)
-#                 downloader.download_image(session, IMAGE_URL)
-#             finally:
-#                 cursor.show()
-
-#     except KeyboardInterrupt:
-#         try:
-#             main_sequence()
-
-#         except Exception as e:
-#             message_processor(f"\n\n[!]\tError processing images to video:\n[i]\t{e}")
-#             main_sequence()
-#         finally:
-#             cursor.show()
 
 def main():
     """
@@ -778,7 +694,6 @@ def main():
             try:
                 TARGET_HOUR = sunset_time.hour
                 TARGET_MINUTE = sunset_time.minute
-                breakpoint()
                 SECONDS = choice(range(15, 22))  # sleep timer seconds
 
                 image_size = downloader.download_image(session, IMAGE_URL)
