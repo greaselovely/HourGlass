@@ -31,6 +31,12 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 today_short_date = datetime.now().strftime("%m%d%Y")
 
+# Used in the event the actual sunrise / sunset is not 
+# retrieved from the timeanddate website.  Change if 
+# you want it sooner / later.
+SUNRISE = '06:00:00'
+SUNSET = '19:00:00'
+
 HOME = Path.home()
 VLA_BASE = os.path.join(HOME, "VLA")
 VIDEO_FOLDER = os.path.join(VLA_BASE, "video")
@@ -663,8 +669,8 @@ def main():
         else:
             soup = None
 
-        sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', '06:00:00')
-        sunset_time = find_time_and_convert(soup, 'Sunset Today:', '19:00:00')
+        sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', SUNRISE)
+        sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
 
         now = datetime.now()
 
