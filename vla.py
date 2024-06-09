@@ -687,9 +687,9 @@ def main():
         sleep_timer = max(time_diff, 0)
 
         if sleep_timer >= 1:
-            message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", print_me=True)
+            message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
-            message_processor(f"Woke up! The current time is {datetime.now().time()}.", print_me=True)
+            message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
 
         session = create_session(WEBPAGE)
         
