@@ -583,6 +583,7 @@ def cleanup(path):
 
 def send_to_ntfy(message="Incomplete Message"):
     global config
+    message = str(message) # cast it to str in case we receive something else that won't process
     ntfy_url = config.get("ntfy")
     headers = {'Content-Type': 'application/x-www-form-urlencoded',}
     requests.post(ntfy_url, headers=headers, data=message)
@@ -682,11 +683,10 @@ def main():
 
         # Calculate the time difference in seconds
         time_diff = (now - sunrise_datetime).total_seconds()
-
-        # Set sleep_timer to 0 if time_diff is negative
         sleep_timer = max(time_diff, 0)
+        message_processor(sleep_timer, ntfy=True, print_me=True)
 
-        if sleep_timer >= 1:
+        if sleep_timer > 0:
             message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
