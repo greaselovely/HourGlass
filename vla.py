@@ -169,7 +169,7 @@ def load_config():
         Edit to change ntfy subscription topic
         """
         logging.error(f"config.json problem; {e}")
-        config_init_starter = {"proxies" : {"http" : "", "https": ""}, "dropbox" : "", "ntfy" : "http://ntfy.sh/vla_time_lapse"}
+        config_init_starter = {"proxies" : {"http" : "", "https": ""}, "ntfy" : "http://ntfy.sh/vla_time_lapse"}
         with open(config_path, 'w') as file:
             json.dump(config_init_starter, file, indent=2)
         # recursion, load the config file since it wasn't found earlier
@@ -611,39 +611,23 @@ def find_time_and_convert(soup, text, default_time_str):
 
 def main_sequence():
     global config
-    dropbox_path = config.get("dropbox")
     fps = 10
-
     message_processor("\n[i]\tValidating Images...")
     valid_files = create_images_dict(IMAGES_FOLDER)
     duration_threshold = calculate_video_duration(len(valid_files), fps)
     message_processor(f"Video Duration: {duration_threshold}", print_me=False)
-    
     full_audio_path = audio_download(duration_threshold)
     if len(full_audio_path) >= 2:
         final_song = concatenate_songs(full_audio_path)
     else:
         final_song = full_audio_path[0][0]
-
-
     message_processor(f"[i]\tCreating Time Lapse Video\n{'#' * 50}")
-    
     create_time_lapse(valid_files, video_path, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
-    
     message_processor(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
-
-    if dropbox_path and os.path.exists(dropbox_path):
-        dropbox_full_path = os.path.join(dropbox_path, os.path.basename(video_path))
-        try:
-            shutil.move(video_path, dropbox_full_path)
-            if os.path.exists(dropbox_full_path):
-                message_processor(f"{os.path.basename(video_path)} moved to Dropbox", ntfy=True)
-                cleanup(IMAGES_FOLDER)
-                cleanup(AUDIO_FOLDER)
-
-        except Exception as e:
-            message_processor(f"Failed to move file: {e}", log_level="error", ntfy=True)
-
+    if video_path and os.path.exists(video_path):
+        message_processor(f"{os.path.basename(video_path)} saved", ntfy=True)
+        cleanup(IMAGES_FOLDER)
+        cleanup(AUDIO_FOLDER)
 
 def main():
     """
