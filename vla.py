@@ -625,7 +625,7 @@ def main_sequence():
     create_time_lapse(valid_files, video_path, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
     message_processor(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
     if video_path and os.path.exists(video_path):
-        message_processor(f"{os.path.basename(video_path)} saved", ntfy=True)
+        message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
         cleanup(IMAGES_FOLDER)
         cleanup(AUDIO_FOLDER)
 
@@ -700,7 +700,6 @@ def main():
                 if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
                     main_sequence()
                     cursor.show()
-                    sys.exit()
             except requests.exceptions.RequestException as e:
                 log_message = f"Session timeout or error detected, re-establishing session: {e}"
                 logging.error(log_jamming(log_message))
