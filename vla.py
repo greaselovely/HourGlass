@@ -659,9 +659,6 @@ def main():
         now = datetime.now()
         # Combine the current date with the sunrise time to get a datetime object
         sunrise_datetime = datetime.combine(now.date(), sunrise_time)
-        # if now.time() > sunrise_time:
-        #     # If the current time is past sunrise, set the next sunrise to the next day
-        #     sunrise_datetime += timedelta(days=1)
 
         # Calculate the time difference in seconds
         time_diff = (now - sunrise_datetime).total_seconds()
