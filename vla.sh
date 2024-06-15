@@ -7,7 +7,9 @@
 # 4: pip install -r requirements.txt
 # 5: Use this script moving forward to start your capture.
 
-alias vla='cd projects/python/VLA && source venv/bin/activate && venv/bin/python3.12 vla.py'
+alias vla='cd ${HOME}/projects/python/VLA && source venv/bin/activate && venv/bin/python3.12 vla.py'
+
+echo $pwd
 
 # Start tmux session
 tmux new-session -d -s vla-timelapse
@@ -20,7 +22,7 @@ tmux resize-pane -L 10
 
 # Run the commands in each pane
 tmux send-keys -t 0 'vla' C-m
-tmux send-keys -t 1 'tail -f ~/VLA/logging/vla_log.txt' C-m
+tmux send-keys -t 1 'tail -f ${HOME}/VLA/logging/vla_log.txt' C-m
 
 # Attach to the session
 tmux attach-session -t vla-timelapse

@@ -590,7 +590,7 @@ def send_to_ntfy(message="Incomplete Message"):
 
 def fetch_html(url):
     try:
-        response = requests.get(url)
+        response = requests.get(url, verify=False)
         response.raise_for_status()  # Raise an HTTPError for bad responses
         return response.text
     except requests.RequestException as e:
@@ -606,8 +606,7 @@ def find_time_and_convert(soup, text, default_time_str):
             if time_match:
                 return datetime.strptime(time_match.group(), '%I:%M %p').time()
     return datetime.strptime(default_time_str, '%H:%M:%S').time()
-
-
+ 
 
 def main_sequence():
     global config
@@ -658,22 +657,23 @@ def main():
         sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
 
         now = datetime.now()
-
         # Combine the current date with the sunrise time to get a datetime object
         sunrise_datetime = datetime.combine(now.date(), sunrise_time)
-        if now.time() > sunrise_time:
-            # If the current time is past sunrise, set the next sunrise to the next day
-            sunrise_datetime += timedelta(days=1)
+        # if now.time() > sunrise_time:
+        #     # If the current time is past sunrise, set the next sunrise to the next day
+        #     sunrise_datetime += timedelta(days=1)
 
         # Calculate the time difference in seconds
         time_diff = (now - sunrise_datetime).total_seconds()
         sleep_timer = max(time_diff, 0)
-        message_processor(sleep_timer, ntfy=True, print_me=True)
+        
 
         if sleep_timer > 0:
             message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
+        else:
+            message_processor(sleep_timer, ntfy=True, print_me=True)
 
         session = create_session(WEBPAGE)
         
