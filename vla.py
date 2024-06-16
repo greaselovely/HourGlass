@@ -448,7 +448,7 @@ def single_song_download():
             return
         
         # Download song content
-        r = requests.get(song_download_path)
+        r = requests.get(song_download_path, verify=False)
         r.raise_for_status()
         
         # Prepare filename and save
