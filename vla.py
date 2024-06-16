@@ -419,13 +419,13 @@ def single_song_download():
         user_agent = choice(USER_AGENTS)
         headers = {"User-Agent": user_agent}
         url = "https://soundtracks.loudly.com/songs"
-        r = requests.get(url, headers=headers)
+        r = requests.get(url, headers=headers, verify=False)
         r.raise_for_status()  # Raises stored HTTPError, if one occurred.
         
         last_page = r.json().get('pagination_data', {}).get('last_page', 20)
         page = choice(range(1, last_page + 1))
         url = f"https://soundtracks.loudly.com/songs?page={page}"
-        r = requests.get(url, headers=headers)
+        r = requests.get(url, headers=headers, verify=False)
         r.raise_for_status()
         
         data = r.json()
