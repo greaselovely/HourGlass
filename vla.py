@@ -607,6 +607,7 @@ def rename_images():
                     message_processor(f"Date and time not found in {filename}")
             
             except Exception as e:
+                os.remove(file_path)
                 message_processor(f"Error processing file {filename}: {e}")
 
 def cleanup(path):
