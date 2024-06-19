@@ -658,8 +658,11 @@ def find_time_and_convert(soup, text, default_time_str):
 def main_sequence():
     global config
     fps = 10
-    message_processor("\n[i]\tRenaming Images...")
-    rename_images()
+    rename = False
+    if not rename:  # we do this to skip renaming again if audio stuff fails.
+        message_processor("\n[i]\tRenaming Images...")
+        rename_images()
+        rename = True
     message_processor("\n[i]\tValidating Images...")
     valid_files = create_images_dict(IMAGES_FOLDER)
     duration_threshold = calculate_video_duration(len(valid_files), fps)
