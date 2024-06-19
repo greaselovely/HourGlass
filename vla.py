@@ -657,7 +657,7 @@ def find_time_and_convert(soup, text, default_time_str):
  
 
 def main_sequence():
-    global config
+    global config, rename
     fps = 10
     rename = False
     if not rename:  # we do this to skip renaming again if audio stuff fails.
@@ -694,7 +694,7 @@ def main():
     try:
         clear()
         cursor.hide()
-        global config, rename
+        global config
         config = load_config()
         
         time_url = "https://www.timeanddate.com/sun/@5481136"
