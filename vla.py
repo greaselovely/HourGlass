@@ -694,7 +694,7 @@ def main():
     try:
         clear()
         cursor.hide()
-        global config
+        global config rename
         config = load_config()
         
         time_url = "https://www.timeanddate.com/sun/@5481136"
