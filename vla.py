@@ -602,13 +602,13 @@ def rename_images():
                     
                     # Rename the file
                     os.rename(file_path, new_file_path)
-                    message_processor(f"Renamed: {filename} -> {new_filename}")
+                    message_processor(f"[i]\t{filename} -> {new_filename}")
                 else:
-                    message_processor(f"Date and time not found in {filename}")
+                    message_processor(f"[!]\tDate and time not found in {filename}")
             
             except Exception as e:
                 os.remove(file_path)
-                message_processor(f"Error processing file {filename}: {e}")
+                message_processor(f"[!]\tError processing file {filename}: {e}")
 
 def cleanup(path):
     """
