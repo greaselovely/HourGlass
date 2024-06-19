@@ -354,7 +354,7 @@ def create_images_dict(images_folder) -> list:
     images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
     images_dict = {}
     
-    for n, image in enumerate(images):
+    for n, image in enumerate(images, 1):
         print(f"[i]\t{n}", end='\r')
         full_image = Path(images_folder) / image
         with pipes() as (out, err):
