@@ -3,19 +3,16 @@ import re
 import cv2
 import sys
 import json
-# import glob
 import cursor
 import shutil
 import hashlib
 import logging
 import textwrap
 import requests
-# import tesserocr
-# import pytesseract
+import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
-# from io import BytesIO
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -24,7 +21,6 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from http.client import IncompleteRead
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
-
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -564,6 +560,55 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     audio_clip.close()
     final_clip.close()
 
+
+def rename_images():
+    # Regex pattern to extract the date and time
+    pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+
+    # Iterate over each image in the folder
+    for filename in os.listdir(IMAGES_FOLDER):
+        if filename.endswith(".jpg"):
+            file_path = os.path.join(IMAGES_FOLDER, filename)
+            
+            try:
+                # Open the image file
+                img = Image.open(file_path)
+                
+                # Crop the image to the top left part where the date and time is located
+                # Adjust the box coordinates as per the location of date and time on the image
+                left, top, right, bottom = 0, 0, 800, 50  # Updated coordinates
+                
+                cropped_img = img.crop((left, top, right, bottom))
+                
+                # Use pytesseract to extract text from the cropped image
+                text = pytesseract.image_to_string(cropped_img, config='--psm 6')
+                
+                # Extract the date and time using regex
+                match = pattern.search(text)
+                if match:
+                    date_time = match.group(0)
+                    # Parse the date and time
+                    date_part, time_part = date_time.split()
+                    # Reformat the date and time
+                    date_part = date_part.replace('-', '')  # Format as YYYYMMDD
+                    time_part = time_part.replace(':', '')  # Format as HHMMSS
+                    
+                    # Reformat to MMDDYYYY
+                    new_date = date_part[4:] + date_part[:4]  # Convert YYYYMMDD to MMDDYYYY
+                    
+                    # Create the new filename
+                    new_filename = f"vla.{new_date}.{time_part}.jpg"
+                    new_file_path = os.path.join(folder_path, new_filename)
+                    
+                    # Rename the file
+                    os.rename(file_path, new_file_path)
+                    message_processor(f"Renamed: {filename} -> {new_filename}")
+                else:
+                    message_processor(f"Date and time not found in {filename}")
+            
+            except Exception as e:
+                message_processor(f"Error processing file {filename}: {e}")
+
 def cleanup(path):
     """
     Removes a directory along with all its contents.
@@ -606,11 +651,15 @@ def find_time_and_convert(soup, text, default_time_str):
             if time_match:
                 return datetime.strptime(time_match.group(), '%I:%M %p').time()
     return datetime.strptime(default_time_str, '%H:%M:%S').time()
+
+
  
 
 def main_sequence():
     global config
     fps = 10
+    message_processor("\n[i]\tRenaming Images...")
+    rename_images()
     message_processor("\n[i]\tValidating Images...")
     valid_files = create_images_dict(IMAGES_FOLDER)
     duration_threshold = calculate_video_duration(len(valid_files), fps)
