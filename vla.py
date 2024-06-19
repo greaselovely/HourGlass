@@ -710,16 +710,14 @@ def main():
         sunrise_datetime = datetime.combine(now.date(), sunrise_time)
 
         # Calculate the time difference in seconds
-        time_diff = (now - sunrise_datetime).total_seconds()
-        sleep_timer = max(time_diff, 0)
-        
-
-        if sleep_timer > 0:
+        if now < sunrise_datetime:
+            time_diff = (sunrise_datetime - now).total_seconds()
+            sleep_timer = time_diff
             message_processor(f"Sleeping for {sleep_timer} seconds until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
         else:
-            message_processor(sleep_timer, ntfy=True, print_me=True)
+            message_processor("Sunrise time has already passed for today.", ntfy=True, print_me=True)
 
         session = create_session(WEBPAGE)
         
