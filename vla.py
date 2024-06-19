@@ -598,7 +598,7 @@ def rename_images():
                     
                     # Create the new filename
                     new_filename = f"vla.{new_date}.{time_part}.jpg"
-                    new_file_path = os.path.join(folder_path, new_filename)
+                    new_file_path = os.path.join(IMAGES_FOLDER, new_filename)
                     
                     # Rename the file
                     os.rename(file_path, new_file_path)
