@@ -99,42 +99,35 @@ class ImageDownloader:
         image_hash = self.compute_hash(image_content)
 
         if image_size == 0:
-            logging.error(f"{RED_CIRCLE} Code: {r.status_code} Zero Size")
+            logging.error(f"[!]\t{RED_CIRCLE} Code: {r.status_code} Zero Size")
             return None
 
         today_short_time = datetime.now().strftime("%H%M%S")
-        FileName = f'vla.{today_short_date}.{today_short_time}.jpg'
-        with open(self.out_path / FileName, 'wb') as f:
+        filename = f'vla.{today_short_date}.{today_short_time}.jpg'
+        with open(self.out_path / filename, 'wb') as f:
             f.write(image_content)
-
-        # image = Image.open(BytesIO(image_content))
-        # with tesserocr.PyTessBaseAPI() as api:
-        #     api.SetImage(image)
-        #     time_stamp = api.GetUTF8Text()
-
 
         if self.prev_image_hash == image_hash:
             """
             uncomment if you want to inspect the images by hand.  
             Also uncomment the hash_collision_path above under __init__.
             """
-            # FileName = f'{today_short_date}_{today_short_time}.jpg'
-            # collision_file_path = self.hash_collisions_path / FileName
+            # filename = f'{today_short_date}_{today_short_time}.jpg'
+            # collision_file_path = self.hash_collisions_path / filename
             # with open(collision_file_path, 'wb') as f:
             #     f.write(image_content)
             # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
             logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
-            return None
+            return None, None
         else:
             # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
             logging.info(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
 
-
-        self.prev_image_filename = FileName
+        self.prev_image_filename = filename
         self.prev_image_size = image_size
         self.prev_image_hash = image_hash  # Ensure this is updated only here
-        # return image_size, time_stamp  # Image saved, return size
-        return image_size  # Image saved, return size
+        
+        return image_size, filename  # Image saved, return size
 
 def load_config():
     """
@@ -243,7 +236,7 @@ def activity(char, images_folder, image_size, time_stamp=""):
     clear()
     files = os.listdir(images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
-    print(f"Iter: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
+    print(f"[i]\tIteration: {char}\n[i]\tImage Count: {jpg_count}\n[i]\tImage Size: {image_size}\n", end="\r", flush=True)
 
 def create_session(webpage, verify=False):
     """
@@ -340,37 +333,37 @@ def create_images_dict(images_folder) -> list:
     valid_images_path = Path(images_folder) / "valid_images.json"
     
     # Check if the valid_images.json file exists and is not empty
-    if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
-        try:
-            with open(valid_images_path, 'r') as file:
-                valid_files = json.load(file)
-                message = f"[i]\tExisting Validation Used"
-                message_processor(message, 'info')
-                return valid_files
-        except json.JSONDecodeError:
-            message = f"[!]\tError decoding JSON, possibly corrupted file."
-            message_processor(message, 'error')
+    # if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
+    #     try:
+    #         with open(valid_images_path, 'r') as file:
+    #             valid_files = json.load(file)
+    #             message = f"[i]\tExisting Validation Used"
+    #             message_processor(message, 'info')
+    #             return valid_files
+    #     except json.JSONDecodeError:
+    #         message = f"[!]\tError decoding JSON, possibly corrupted file."
+    #         message_processor(message, 'error')
     
-    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
-    images_dict = {}
+    images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
+    # images_dict = {}
     
-    for n, image in enumerate(images, 1):
-        print(f"[i]\t{n}", end='\r')
-        full_image = Path(images_folder) / image
-        with pipes() as (out, err):
-            img = cv2.imread(str(full_image))
-        err.seek(0)
-        error_message = err.read()
-        if error_message == "":
-            images_dict[str(full_image)] = error_message
+    # for n, image in enumerate(images, 1):
+    #     print(f"[i]\t{n}", end='\r')
+    #     full_image = Path(images_folder) / image
+    #     with pipes() as (out, err):
+    #         img = cv2.imread(str(full_image))
+    #     err.seek(0)
+    #     error_message = err.read()
+    #     if error_message == "":
+    #         images_dict[str(full_image)] = error_message
 
-    valid_files = list(images_dict.keys())
+    # valid_files = list(images_dict.keys())
     
-    # Save the valid image paths to a JSON file
-    with open(valid_images_path, 'w') as file:
-        json.dump(valid_files, file)
+    # # Save the valid image paths to a JSON file
+    # with open(valid_images_path, 'w') as file:
+    #     json.dump(valid_files, file)
 
-    return valid_files
+    return images
 
 def calculate_video_duration(num_images, fps) -> int:
     """
@@ -560,55 +553,39 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     audio_clip.close()
     final_clip.close()
 
-
-def rename_images():
+def rename_images(IMAGES_FOLDER, filename):
     # Regex pattern to extract the date and time
     pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
 
-    # Iterate over each image in the folder
-    for filename in os.listdir(IMAGES_FOLDER):
-        if filename.endswith(".jpg"):
-            file_path = os.path.join(IMAGES_FOLDER, filename)
+    file_path = os.path.join(IMAGES_FOLDER, filename)
+    
+    try:
+        img = Image.open(file_path)
+        
+        left, top, right, bottom = 0, 0, 800, 50 
+        
+        cropped_img = img.crop((left, top, right, bottom))
+        text = pytesseract.image_to_string(cropped_img, config='--psm 6')
+        
+        match = pattern.search(text)
+        if match:
+            date_time = match.group(0)
+            date_part, time_part = date_time.split()
+            date_part = date_part.replace('-', '')  # Format as YYYYMMDD
+            time_part = time_part.replace(':', '')  # Format as HHMMSS
+            new_date = date_part[4:] + date_part[:4]  # Convert YYYYMMDD to MMDDYYYY
             
-            try:
-                # Open the image file
-                img = Image.open(file_path)
-                
-                # Crop the image to the top left part where the date and time is located
-                # Adjust the box coordinates as per the location of date and time on the image
-                left, top, right, bottom = 0, 0, 800, 50  # Updated coordinates
-                
-                cropped_img = img.crop((left, top, right, bottom))
-                
-                # Use pytesseract to extract text from the cropped image
-                text = pytesseract.image_to_string(cropped_img, config='--psm 6')
-                
-                # Extract the date and time using regex
-                match = pattern.search(text)
-                if match:
-                    date_time = match.group(0)
-                    # Parse the date and time
-                    date_part, time_part = date_time.split()
-                    # Reformat the date and time
-                    date_part = date_part.replace('-', '')  # Format as YYYYMMDD
-                    time_part = time_part.replace(':', '')  # Format as HHMMSS
-                    
-                    # Reformat to MMDDYYYY
-                    new_date = date_part[4:] + date_part[:4]  # Convert YYYYMMDD to MMDDYYYY
-                    
-                    # Create the new filename
-                    new_filename = f"vla.{new_date}.{time_part}.jpg"
-                    new_file_path = os.path.join(IMAGES_FOLDER, new_filename)
-                    
-                    # Rename the file
-                    os.rename(file_path, new_file_path)
-                    message_processor(f"[i]\t{filename} -> {new_filename}")
-                else:
-                    message_processor(f"[!]\tDate and time not found in {filename}")
+            new_filename = f"vla.{new_date}.{time_part}.jpg"
+            new_file_path = os.path.join(IMAGES_FOLDER, new_filename)
             
-            except Exception as e:
-                os.remove(file_path)
-                message_processor(f"[!]\tError processing file {filename}: {e}")
+            os.rename(file_path, new_file_path)
+            message_processor(f"[i]\t{filename} -> {new_filename}")
+        else:
+            message_processor(f"[!]\tDate and time not found in {filename}")
+    
+    except Exception as e:
+        os.remove(file_path)
+        message_processor(f"[!]\tError processing file {filename}: {e}")
 
 def cleanup(path):
     """
@@ -633,6 +610,14 @@ def send_to_ntfy(message="Incomplete Message"):
     ntfy_url = config.get("ntfy")
     headers = {'Content-Type': 'application/x-www-form-urlencoded',}
     requests.post(ntfy_url, headers=headers, data=message)
+
+def sun_schedule():
+        time_url = "https://www.timeanddate.com/sun/@5481136"
+        html_content = fetch_html(time_url)
+        if html_content:
+            return BeautifulSoup(html_content, 'html.parser')
+        else:
+            return
 
 def fetch_html(url):
     try:
@@ -659,11 +644,6 @@ def find_time_and_convert(soup, text, default_time_str):
 def main_sequence():
     global config, rename
     fps = 10
-    rename = False
-    if not rename:  # we do this to skip renaming again if audio stuff fails.
-        message_processor("\n[i]\tRenaming Images...")
-        rename_images()
-        rename = True
     message_processor("\n[i]\tValidating Images...")
     valid_files = create_images_dict(IMAGES_FOLDER)
     duration_threshold = calculate_video_duration(len(valid_files), fps)
@@ -696,24 +676,15 @@ def main():
         cursor.hide()
         global config
         config = load_config()
-        
-        time_url = "https://www.timeanddate.com/sun/@5481136"
-
-        html_content = fetch_html(time_url)
-
-        if html_content:
-            soup = BeautifulSoup(html_content, 'html.parser')
-        else:
-            soup = None
+                  
+        soup = sun_schedule()
 
         sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', SUNRISE)
         sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
 
         now = datetime.now()
-        # Combine the current date with the sunrise time to get a datetime object
         sunrise_datetime = datetime.combine(now.date(), sunrise_time)
 
-        # Calculate the time difference in seconds
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
@@ -734,12 +705,14 @@ def main():
                 TARGET_MINUTE = sunset_time.minute
                 SECONDS = choice(range(15, 22))  # sleep timer seconds
 
-                image_size = downloader.download_image(session, IMAGE_URL)
+                image_size, filename = downloader.download_image(session, IMAGE_URL)
+                
                 if image_size is not None:
                     activity(i, IMAGES_FOLDER, image_size)
+                    rename_images(IMAGES_FOLDER, filename)
                 else:
                     clear()
-                    print(f"{RED_CIRCLE} Iteration: {i}")
+                    print(f"[!]\t{RED_CIRCLE} Iteration: {i}")
 
                 sleep(SECONDS)
                 

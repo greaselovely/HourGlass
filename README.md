@@ -13,9 +13,9 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 
 ## Requirements
 
-- Python 3.6 or newer
-- External Python packages: `requests`, `numpy`, `cv2` (OpenCV), `moviepy`, `cursor`, `logging`, `hashlib`, `json`
-- Internet connection for downloading images and audio tracks.
+- Python 3.12 or newer
+- tesseract-ocr is needed: `sudo apt install tesseract-ocr`
+
 
 ## Setup
 
