@@ -17,9 +17,10 @@ from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
-from datetime import datetime, timedelta
+from datetime import datetime
 from bs4 import BeautifulSoup
 from http.client import IncompleteRead
+from graph import create_time_difference_graph
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -41,6 +42,7 @@ LOGGING_FOLDER = os.path.join(VLA_BASE, "logging")
 AUDIO_FOLDER = os.path.join(VLA_BASE, "audio")
 LOG_FILE_NAME = "vla_log.txt"
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
+GRAPH_FOLDER = os.path.expanduser("~/VLA/graphs")
 
 for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER]:
     os.makedirs(folder, exist_ok=True)
@@ -658,6 +660,7 @@ def main_sequence():
     message_processor(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
     if video_path and os.path.exists(video_path):
         message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
+        create_time_difference_graph(IMAGES_FOLDER, GRAPH_FOLDER)
         cleanup(IMAGES_FOLDER)
         cleanup(AUDIO_FOLDER)
 
