@@ -335,37 +335,37 @@ def create_images_dict(images_folder) -> list:
     valid_images_path = Path(images_folder) / "valid_images.json"
     
     # Check if the valid_images.json file exists and is not empty
-    # if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
-    #     try:
-    #         with open(valid_images_path, 'r') as file:
-    #             valid_files = json.load(file)
-    #             message = f"[i]\tExisting Validation Used"
-    #             message_processor(message, 'info')
-    #             return valid_files
-    #     except json.JSONDecodeError:
-    #         message = f"[!]\tError decoding JSON, possibly corrupted file."
-    #         message_processor(message, 'error')
+    if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
+        try:
+            with open(valid_images_path, 'r') as file:
+                valid_files = json.load(file)
+                message = f"[i]\tExisting Validation Used"
+                message_processor(message, 'info')
+                return valid_files
+        except json.JSONDecodeError:
+            message = f"[!]\tError decoding JSON, possibly corrupted file."
+            message_processor(message, 'error')
     
     images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
-    # images_dict = {}
+    images_dict = {}
     
-    # for n, image in enumerate(images, 1):
-    #     print(f"[i]\t{n}", end='\r')
-    #     full_image = Path(images_folder) / image
-    #     with pipes() as (out, err):
-    #         img = cv2.imread(str(full_image))
-    #     err.seek(0)
-    #     error_message = err.read()
-    #     if error_message == "":
-    #         images_dict[str(full_image)] = error_message
+    for n, image in enumerate(images, 1):
+        print(f"[i]\t{n}", end='\r')
+        full_image = Path(images_folder) / image
+        with pipes() as (out, err):
+            img = cv2.imread(str(full_image))
+        err.seek(0)
+        error_message = err.read()
+        if error_message == "":
+            images_dict[str(full_image)] = error_message
 
-    # valid_files = list(images_dict.keys())
+    valid_files = list(images_dict.keys())
     
-    # # Save the valid image paths to a JSON file
-    # with open(valid_images_path, 'w') as file:
-    #     json.dump(valid_files, file)
+    # Save the valid image paths to a JSON file
+    with open(valid_images_path, 'w') as file:
+        json.dump(valid_files, file)
 
-    return images
+    return valid_files
 
 def calculate_video_duration(num_images, fps) -> int:
     """
@@ -712,7 +712,7 @@ def main():
                 
                 if image_size is not None:
                     activity(i, IMAGES_FOLDER, image_size)
-                    rename_images(IMAGES_FOLDER, filename)
+                    # rename_images(IMAGES_FOLDER, filename)
                 else:
                     clear()
                     print(f"[!]\t{RED_CIRCLE} Iteration: {i}")
