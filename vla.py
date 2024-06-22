@@ -431,8 +431,8 @@ def single_song_download():
         
         # If the song duration is less than the duration_threshold, retry fetching a song
 
-        song = choice(songs)
-        song_duration = song.get('duration', 0)
+        # song = choice(songs)
+        # song_duration = song.get('duration', 0)
 
         song_download_path = song.get('music_file_path')
         if not song_download_path:
