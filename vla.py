@@ -346,7 +346,8 @@ def create_images_dict(images_folder) -> list:
             message = f"[!]\tError decoding JSON, possibly corrupted file."
             message_processor(message, 'error')
     
-    images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
+    # images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
+    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
     images_dict = {}
     
     for n, image in enumerate(images, 1):
