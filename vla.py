@@ -17,9 +17,9 @@ from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
-from datetime import datetime
 from bs4 import BeautifulSoup
 from http.client import IncompleteRead
+from datetime import datetime, timedelta
 from graph import create_time_difference_graph
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
@@ -33,6 +33,7 @@ today_short_date = datetime.now().strftime("%m%d%Y")
 # you want it sooner / later.
 SUNRISE = '06:00:00'
 SUNSET = '19:00:00'
+SUNSET_TIME_ADD = 5 # MINUTES
 
 HOME = Path.home()
 VLA_BASE = os.path.join(HOME, "VLA")
@@ -615,21 +616,18 @@ def send_to_ntfy(message="Incomplete Message"):
     requests.post(ntfy_url, headers=headers, data=message)
 
 def sun_schedule():
-        time_url = "https://www.timeanddate.com/sun/@5481136"
-        html_content = fetch_html(time_url)
-        if html_content:
-            return BeautifulSoup(html_content, 'html.parser')
-        else:
-            return
-
-def fetch_html(url):
+    time_url = "https://www.timeanddate.com/sun/@5481136"
     try:
-        response = requests.get(url, verify=False)
+        response = requests.get(time_url, verify=False)
         response.raise_for_status()  # Raise an HTTPError for bad responses
-        return response.text
+        html_content = response.text
     except requests.RequestException as e:
-        print(f"Error fetching the HTML content from {url}: {e}")
+        print(f"Error fetching the HTML content from {time_url}: {e}")
         return None
+    if html_content:
+        return BeautifulSoup(html_content, 'html.parser')
+    else:
+        return
 
 def find_time_and_convert(soup, text, default_time_str):
     if soup is not None:
@@ -641,8 +639,6 @@ def find_time_and_convert(soup, text, default_time_str):
                 return datetime.strptime(time_match.group(), '%I:%M %p').time()
     return datetime.strptime(default_time_str, '%H:%M:%S').time()
 
-
- 
 
 def main_sequence():
     global config, rename
@@ -688,6 +684,8 @@ def main():
 
         now = datetime.now()
         sunrise_datetime = datetime.combine(now.date(), sunrise_time)
+        sunset_datetime = datetime.combine(now.date(), sunset_time)
+        sunset_datetime += timedelta(minutes=SUNSET_TIME_ADD)
 
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
