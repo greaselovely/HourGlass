@@ -33,7 +33,7 @@ today_short_date = datetime.now().strftime("%m%d%Y")
 # you want it sooner / later.
 SUNRISE = '06:00:00'
 SUNSET = '19:00:00'
-SUNSET_TIME_ADD = 5 # MINUTES
+SUNSET_TIME_ADD = 15 # MINUTES
 
 HOME = Path.home()
 VLA_BASE = os.path.join(HOME, "VLA")
