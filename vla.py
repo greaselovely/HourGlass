@@ -267,7 +267,7 @@ def create_session(webpage):
 
     # Perform an initial request to verify connectivity
     try:
-        response = session.get(webpage, verify=verify, timeout=10)
+        response = session.get(webpage, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
         log_message = f"Session Created: {session.cookies.get_dict()}, {session.headers.values()}"
         logging.info(log_jamming(log_message))
@@ -300,11 +300,11 @@ def make_request(session):
     for _ in range(max_retries):
         try:
             if http_proxy and https_proxy:
-                response = requests.get(session, proxies=proxies, verify=verify)
+                response = requests.get(session, proxies=proxies)
                 response.raise_for_status()
                 return response
             else:
-                response = requests.get(session, verify=verify)
+                response = requests.get(session)
                 response.raise_for_status()
                 return response
         except IncompleteRead as e:
