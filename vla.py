@@ -92,7 +92,7 @@ class ImageDownloader:
         return hashlib.sha256(image_content).hexdigest()
 
     def download_image(self, session, IMAGE_URL):
-        r = session.get(IMAGE_URL, verify=False)
+        r = session.get(IMAGE_URL)
         if r is None or r.status_code != 200:
             logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
             return None
@@ -241,7 +241,7 @@ def activity(char, images_folder, image_size, time_stamp=""):
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
     print(f"[i]\tIteration: {char}\n[i]\tImage Count: {jpg_count}\n[i]\tImage Size: {image_size}\n", end="\r", flush=True)
 
-def create_session(webpage, verify=False):
+def create_session(webpage):
     """
     Initializes a session and verifies its ability to connect to a given webpage.
     
@@ -276,7 +276,7 @@ def create_session(webpage, verify=False):
         logging.error(f"Failed to connect to {webpage} with session: {e}")
         return None
 
-def make_request(session, verify=False):
+def make_request(session):
     """
     Makes an HTTP request using the specified session and handles retries.
 
@@ -412,13 +412,13 @@ def single_song_download():
         user_agent = choice(USER_AGENTS)
         headers = {"User-Agent": user_agent}
         url = "https://soundtracks.loudly.com/songs"
-        r = requests.get(url, headers=headers, verify=False)
+        r = requests.get(url, headers=headers)
         r.raise_for_status()  # Raises stored HTTPError, if one occurred.
         
         last_page = r.json().get('pagination_data', {}).get('last_page', 20)
         page = choice(range(1, last_page + 1))
         url = f"https://soundtracks.loudly.com/songs?page={page}"
-        r = requests.get(url, headers=headers, verify=False)
+        r = requests.get(url, headers=headers)
         r.raise_for_status()
         
         data = r.json()
@@ -441,7 +441,7 @@ def single_song_download():
             return
         
         # Download song content
-        r = requests.get(song_download_path, verify=False)
+        r = requests.get(song_download_path)
         r.raise_for_status()
         
         # Prepare filename and save
@@ -618,7 +618,7 @@ def send_to_ntfy(message="Incomplete Message"):
 def sun_schedule():
     time_url = "https://www.timeanddate.com/sun/@5481136"
     try:
-        response = requests.get(time_url, verify=False)
+        response = requests.get(time_url)
         response.raise_for_status()  # Raise an HTTPError for bad responses
         html_content = response.text
     except requests.RequestException as e:
