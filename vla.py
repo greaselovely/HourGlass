@@ -23,9 +23,6 @@ from datetime import datetime, timedelta
 from graph import create_time_difference_graph
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
-# from requests.packages.urllib3.exceptions import InsecureRequestWarning # type: ignore
-# requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
 today_short_date = datetime.now().strftime("%m%d%Y")
 
 # Used in the event the actual sunrise / sunset is not 
