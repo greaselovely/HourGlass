@@ -654,7 +654,7 @@ def main_sequence():
     message_processor(f"{'#' * 50}\n[i]\tTime Lapse Saved:\n[>]\t{video_path}")
     if video_path and os.path.exists(video_path):
         message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
-        create_time_difference_graph(IMAGES_FOLDER, GRAPH_FOLDER)
+        # create_time_difference_graph(IMAGES_FOLDER, GRAPH_FOLDER)
         cleanup(IMAGES_FOLDER)
         cleanup(AUDIO_FOLDER)
 
