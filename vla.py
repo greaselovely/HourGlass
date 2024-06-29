@@ -95,7 +95,7 @@ class ImageDownloader:
         r = session.get(IMAGE_URL)
         if r is None or r.status_code != 200:
             logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
-            return None
+            return None, None
 
         image_content = r.content
         image_size = len(image_content)
