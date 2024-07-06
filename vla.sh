@@ -1,15 +1,23 @@
 #!/bin/bash
 
-# You can use this to start a tmux session and start tailing the log file for visibility.
-# 1: Update the alias command below to where you installed this repo.  
-# 2: Setup a venv for this repo (python3.12 -m venv venv)
-# 3: source venv/bin/activate
-# 4: pip install -r requirements.txt
-# 5: Use this script moving forward to start your capture.
+# Check if tmux is installed
+if ! command -v tmux &> /dev/null; then
+    echo "tmux is not installed. Please install it and try again."
+    exit 1
+fi
 
-alias vla='cd ${HOME}/projects/python/VLA && source venv/bin/activate && venv/bin/python3.12 vla.py'
+# Function to run vla.py
+vla() {
+    source venv/bin/activate && python vla.py
+}
+export -f vla
 
-echo $pwd
+# Check if the session already exists
+if tmux has-session -t vla-timelapse 2>/dev/null; then
+    echo "Session 'vla-timelapse' already exists. Attaching to it."
+    tmux attach-session -t vla-timelapse
+    exit 0
+fi
 
 # Start tmux session
 tmux new-session -d -s vla-timelapse
@@ -22,7 +30,7 @@ tmux resize-pane -L 10
 
 # Run the commands in each pane
 tmux send-keys -t 0 'vla' C-m
-tmux send-keys -t 1 'tail -f ${HOME}/VLA/logging/vla_log.txt' C-m
+tmux send-keys -t 1 'tail -f logging/vla_log.txt' C-m
 
 # Attach to the session
 tmux attach-session -t vla-timelapse
