@@ -97,6 +97,4 @@ else
     exit 1
 fi
 
-echo -e "[i]\tInstallation complete. Virtual environment is active and packages are installed."
-echo -e "[i]\tTo deactivate the virtual environment, run 'deactivate'."
-echo -e "[i]\tTo activate it again, run 'source $VENV_DIR/bin/activate'."
+echo -e "[i]\tInstallation complete. Virtual environment and packages are installed."
