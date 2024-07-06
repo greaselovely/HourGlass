@@ -14,15 +14,8 @@ export -f vla
 
 # Get the log file path from vla.py
 LOG_FILE=$(python3 -c "
-import os
-from pathlib import Path
-
-HOME = Path.home()
-VLA_BASE = os.path.join(HOME, 'VLA')
-LOGGING_FOLDER = os.path.join(VLA_BASE, 'logging')
-LOG_FILE_NAME = 'vla_log.txt'
-LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
-print(LOGGING_FILE)
+import vla
+print(vla.LOGGING_FILE)
 ")
 
 # Check if the session already exists
