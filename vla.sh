@@ -13,7 +13,7 @@ vla() {
 export -f vla
 
 # Get the log file path from vla.py with error handling and debugging
-LOG_FILE=$(python3 -c "
+LOG_FILE=$(source venv/bin/activate && python3 -c "
 import sys
 import os
 
