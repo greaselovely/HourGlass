@@ -12,11 +12,32 @@ vla() {
 }
 export -f vla
 
-# Get the log file path from vla.py
+# Get the log file path from vla.py with error handling and debugging
 LOG_FILE=$(python3 -c "
-import vla
-print(vla.LOGGING_FILE)
-")
+import sys
+import os
+
+# Add the current directory to Python path
+sys.path.append(os.getcwd())
+
+try:
+    import vla
+    print(vla.LOGGING_FILE)
+except ImportError as e:
+    print(f'Error importing vla: {e}', file=sys.stderr)
+    sys.exit(1)
+except AttributeError as e:
+    print(f'Error accessing LOGGING_FILE: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1)
+
+# Check if LOG_FILE is empty or contains an error message
+if [ -z "$LOG_FILE" ] || [[ "$LOG_FILE" == Error* ]]; then
+    echo "Failed to get log file path: $LOG_FILE"
+    exit 1
+fi
+
+echo "Log file path: $LOG_FILE"
 
 # Check if the session already exists
 if tmux has-session -t vla-timelapse 2>/dev/null; then
