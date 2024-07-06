@@ -23,8 +23,14 @@ install_debian() {
 }
 
 install_rhel() {
-    echo -e "[i]\tUpdating package lists..."
-    sudo dnf check-update || { echo -e "[!]\tFailed to update package lists"; exit 1; }
+    echo -e "[i]\tChecking for updates..."
+    sudo dnf check-update
+    local check_update_status=$?
+    if [ $check_update_status -eq 1 ]; then
+        echo -e "[!]\tFailed to check for updates"
+        exit 1
+    fi
+    # No need to exit if updates are available (status 100) or if there are no updates (status 0)
 
     echo -e "[i]\tInstalling Python3-OpenCV and python3..."
     sudo dnf install -y python3-opencv python3 || { echo -e "[!]\tFailed to install required packages"; exit 1; }
