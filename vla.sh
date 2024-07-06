@@ -12,6 +12,16 @@ vla() {
 }
 export -f vla
 
+# Set the correct path for the log file
+LOG_FILE="$HOME/VLA/logging/vla_log.txt"
+
+# Check if the log file exists
+if [ ! -f "$LOG_FILE" ]; then
+    echo "Log file not found at $LOG_FILE"
+    echo "Please ensure the file exists before running this script."
+    exit 1
+fi
+
 # Check if the session already exists
 if tmux has-session -t vla-timelapse 2>/dev/null; then
     echo "Session 'vla-timelapse' already exists. Attaching to it."
@@ -30,7 +40,7 @@ tmux resize-pane -L 10
 
 # Run the commands in each pane
 tmux send-keys -t 0 'vla' C-m
-tmux send-keys -t 1 'tail -f logging/vla_log.txt' C-m
+tmux send-keys -t 1 "tail -f $LOG_FILE" C-m
 
 # Attach to the session
 tmux attach-session -t vla-timelapse
