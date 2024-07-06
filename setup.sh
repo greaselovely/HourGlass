@@ -30,7 +30,6 @@ install_rhel() {
         echo -e "[!]\tFailed to check for updates"
         exit 1
     fi
-    # No need to exit if updates are available (status 100) or if there are no updates (status 0)
 
     echo -e "[i]\tInstalling Python3-OpenCV and python3..."
     sudo dnf install -y python3-opencv python3 || { echo -e "[!]\tFailed to install required packages"; exit 1; }
@@ -80,6 +79,10 @@ fi
 # Activate virtual environment
 echo -e "[i]\tActivating virtual environment..."
 source $VENV_DIR/bin/activate || { echo -e "[!]\tFailed to activate virtual environment"; exit 1; }
+
+# Upgrade pip
+echo -e "[i]\tUpgrading pip..."
+pip install --upgrade pip || { echo -e "[!]\tFailed to upgrade pip"; exit 1; }
 
 # Install packages from requirements.txt
 if [ -f "requirements.txt" ]; then
