@@ -9,13 +9,18 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 - **Automated Image Downloads:** Downloads images from the VLA observatory webcam.
 - **Duplicate Avoidance:** Uses SHA-256 hashing to prevent saving duplicate images.
 - **Time-Lapse Video Creation:** Generates a time-lapse video from the collected images.
-- **Audio Track Addition:** Adds a soundtrack to the time-lapse video, ensuring the video has a minimum duration.
+- **Audio Track Addition:** Adds a soundtrack to the time-lapse video.
+
+## Tested On
+
+- **Ubuntu**
+- **Fedora**
+- **Debian**
+
 
 ## Requirements
 
 - Python 3.12 or newer
-- tesseract-ocr is needed: `sudo apt install tesseract-ocr`
-
 
 ## Setup
 
@@ -24,10 +29,10 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 2. **Install Required Packages:** Install the required Python packages by running:
 
     ```
-    pip install -r requirements.txt
+    bash setup.sh
     ```
 
-3. **Configuration:** The script uses a `config.json` file for proxy settings (if needed). On the first run, it will attempt to create this file with default settings if it doesn't exist.
+3. **Configuration:** The script uses a `config.json` file for proxy settings (if needed) and for ntfy.sh subscription URL. On the first run, it will attempt to create this file with default settings if it doesn't exist.
 
 ## Usage
 
@@ -35,6 +40,12 @@ To run the script, navigate to the script's directory and execute:
 
 ```
 python vla.py
+```
+
+or
+
+```
+bash vla.sh
 ```
 
 The script will start downloading images, logging its activities, and saving the images in a folder named `VLA/images` within your home directory. Press `Ctrl+C` to stop the image downloading process and start the video creation phase.

@@ -38,6 +38,17 @@ install_rhel() {
     check_command pip3
 }
 
+install_opensuse() {
+    echo -e "[i]\tUpdating package lists..."
+    sudo zypper refresh || { echo -e "[!]\tFailed to update package lists"; exit 1; }
+
+    echo -e "[i]\tInstalling Python3-OpenCV and python3..."
+    sudo zypper install -y python3-opencv python3 python3-pip || { echo -e "[!]\tFailed to install required packages"; exit 1; }
+
+    check_command python3
+    check_command pip3
+}
+
 install_macos() {
     if ! check_command brew; then
         echo -e "[!]\tHomebrew is required for macOS. Please install it first."
@@ -61,6 +72,9 @@ if [ -f /etc/debian_version ]; then
 elif [ -f /etc/redhat-release ]; then
     echo -e "[i]\tDetected RHEL-based system."
     install_rhel
+elif [ -f /etc/SuSE-release ] || [ -f /etc/SUSE-brand ]; then
+    echo -e "[i]\tDetected openSUSE system."
+    install_opensuse
 elif [ "$(uname)" == "Darwin" ]; then
     echo -e "[i]\tDetected macOS."
     install_macos
