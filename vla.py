@@ -687,7 +687,7 @@ def main():
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
-            message_processor(f"Sleeping for {sleep_timer} seconds / {sleep_timer  * 60} minutes until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
+            message_processor(f"Sleeping for {sleep_timer} seconds / {sleep_timer  / 60} minutes until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
         else:
