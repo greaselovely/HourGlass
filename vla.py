@@ -1,8 +1,10 @@
 import os
 import re
 import io
+import os
 import cv2
 import json
+import wave
 import cursor
 import shutil
 import hashlib
@@ -492,65 +494,76 @@ def concatenate_songs(songs, crossfade_seconds=3, max_retries=3):
         message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
         return None
     
-    clips = []
+    output = wave.open(io.BytesIO(), 'wb')
+    output.setnchannels(2)  # Stereo
+    output.setsampwidth(2)  # 16-bit
+    output.setframerate(44100)  # 44.1kHz
+    
     total_duration = 0
-    required_duration = sum(duration for _, duration in songs) * 1000  # pydub uses milliseconds
+    required_duration = sum(duration for _, duration in songs)
 
-    while total_duration < required_duration:
-        for song in songs:
-            song_path, song_duration = song
-            for attempt in range(max_retries):
-                try:
-                    audio = AudioSegment.from_file(song_path)
-                    clips.append(audio)
-                    total_duration += len(audio)
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        message_processor(f"[!]\tError loading audio from {song_path}. Attempt {attempt + 1}/{max_retries}. Retrying...", log_level="warning")
-                        # Attempt to re-download a new song
-                        new_song_path, new_song_duration = single_song_download()
-                        if new_song_path:
-                            song_path, song_duration = new_song_path, new_song_duration
-                        else:
-                            # If re-download fails, try re-encoding
-                            try:
-                                re_encoded_audio = re_encode_audio(song_path)
-                                clips.append(re_encoded_audio)
-                                total_duration += len(re_encoded_audio)
-                                break
-                            except Exception as re_encode_error:
-                                message_processor(f"[!]\tFailed to re-encode {song_path}: {re_encode_error}", log_level="error")
-                    else:
-                        message_processor(f"[!]\tFailed to load audio from {song_path} after {max_retries} attempts. Downloading a replacement.", log_level="error", ntfy=True)
-                        # If all attempts fail, download a replacement song
-                        replacement_path, replacement_duration = single_song_download()
-                        if replacement_path:
-                            replacement_audio = AudioSegment.from_file(replacement_path)
-                            clips.append(replacement_audio)
-                            total_duration += len(replacement_audio)
-                        else:
-                            message_processor(f"[!]\tFailed to download a replacement song. Continuing to next song.", log_level="error", ntfy=True)
-            
-            if total_duration >= required_duration:
+    for song in songs:
+        song_path, song_duration = song
+        for attempt in range(max_retries):
+            try:
+                with wave.open(song_path, 'rb') as w:
+                    if not output.getnframes():
+                        output.setnchannels(w.getnchannels())
+                        output.setsampwidth(w.getsampwidth())
+                        output.setframerate(w.getframerate())
+                    
+                    output.writeframes(w.readframes(w.getnframes()))
+                    total_duration += song_duration
                 break
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    message_processor(f"[!]\tError loading audio from {song_path}. Attempt {attempt + 1}/{max_retries}. Retrying...", log_level="warning")
+                    new_song_path, new_song_duration = single_song_download()
+                    if new_song_path:
+                        song_path, song_duration = new_song_path, new_song_duration
+                else:
+                    message_processor(f"[!]\tFailed to load audio from {song_path} after {max_retries} attempts. Downloading a replacement.", log_level="error", ntfy=True)
+                    replacement_path, replacement_duration = single_song_download()
+                    if replacement_path:
+                        with wave.open(replacement_path, 'rb') as w:
+                            output.writeframes(w.readframes(w.getnframes()))
+                            total_duration += replacement_duration
+                    else:
+                        message_processor(f"[!]\tFailed to download a replacement song. Continuing to next song.", log_level="error", ntfy=True)
+        
+        if total_duration >= required_duration:
+            break
 
-    if clips:
-        final_audio = clips[0]
-        for clip in clips[1:]:
-            final_audio = final_audio.append(clip, crossfade=crossfade_seconds * 1000)
-        
+    if total_duration > 0:
         # Adjust the final audio to match the required duration
-        if len(final_audio) < required_duration:
-            final_audio = final_audio * (required_duration // len(final_audio) + 1)
-        final_audio = final_audio[:required_duration]
+        frames = output.getnframes()
+        framerate = output.getframerate()
+        channels = output.getnchannels()
+        sampwidth = output.getsampwidth()
         
-        # Convert pydub AudioSegment to bytes for MoviePy
-        audio_bytes = io.BytesIO()
-        final_audio.export(audio_bytes, format="mp3")
-        audio_bytes.seek(0)
+        if total_duration < required_duration:
+            # Loop the audio
+            repeat_times = int(required_duration / total_duration) + 1
+            output.setpos(0)
+            frames = output.readframes(frames)
+            output.setnframes(0)
+            for _ in range(repeat_times):
+                output.writeframes(frames)
         
-        return AudioFileClip(audio_bytes)
+        # Trim if necessary
+        required_frames = int(required_duration * framerate)
+        if output.getnframes() > required_frames:
+            output.setpos(0)
+            frames = output.readframes(required_frames)
+            output.setnframes(0)
+            output.writeframes(frames)
+        
+        # Convert to AudioFileClip
+        output.seek(0)
+        temp_wav = io.BytesIO()
+        output.writeframes(output.readframes(output.getnframes()))
+        temp_wav.seek(0)
+        return AudioFileClip(temp_wav)
 
     return None
 
