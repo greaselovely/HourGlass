@@ -1,7 +1,7 @@
 import os
 import re
+import io
 import cv2
-import sys
 import json
 import cursor
 import shutil
@@ -9,7 +9,6 @@ import hashlib
 import logging
 import textwrap
 import requests
-import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
@@ -18,9 +17,9 @@ from pathlib import Path
 from random import choice
 from wurlitzer import pipes
 from bs4 import BeautifulSoup
+from pydub import AudioSegment
 from http.client import IncompleteRead
 from datetime import datetime, timedelta
-from graph import create_time_difference_graph
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 today_short_date = datetime.now().strftime("%m%d%Y")
@@ -487,48 +486,84 @@ def audio_download(video_duration) -> list:
     
     return songs
     
-def concatenate_songs(songs, crossfade_seconds=3):
-    """
-    Concatenates multiple AudioFileClip objects with manual crossfade.
-    
-    Args:
-        songs (list of tuples): List of tuples, each containing the path to an audio file and its duration.
-        crossfade_seconds (int): Duration of crossfade between clips.
-    
-    Returns:
-        AudioFileClip or None: The concatenated audio clip.
-    """
+
+def concatenate_songs(songs, crossfade_seconds=3, max_retries=3):
     if not songs:
         message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
         return None
     
     clips = []
-    for song in songs:
-        if isinstance(song, tuple) and len(song) > 0:
-            song_path = song[0]  # Assuming the file path is the first element in the tuple
-            try:
-                clip = AudioFileClip(song_path)
-                clips.append(clip)
-            except Exception as e:
-                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error", ntfy=True)
-                sys.exit(1)
-                
-        else:
-            message_processor("[!]\tInvalid song data format.", log_level="error", ntfy=True)
+    total_duration = 0
+    required_duration = sum(duration for _, duration in songs) * 1000  # pydub uses milliseconds
+
+    while total_duration < required_duration:
+        for song in songs:
+            song_path, song_duration = song
+            for attempt in range(max_retries):
+                try:
+                    audio = AudioSegment.from_file(song_path)
+                    clips.append(audio)
+                    total_duration += len(audio)
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        message_processor(f"[!]\tError loading audio from {song_path}. Attempt {attempt + 1}/{max_retries}. Retrying...", log_level="warning")
+                        # Attempt to re-download a new song
+                        new_song_path, new_song_duration = single_song_download()
+                        if new_song_path:
+                            song_path, song_duration = new_song_path, new_song_duration
+                        else:
+                            # If re-download fails, try re-encoding
+                            try:
+                                re_encoded_audio = re_encode_audio(song_path)
+                                clips.append(re_encoded_audio)
+                                total_duration += len(re_encoded_audio)
+                                break
+                            except Exception as re_encode_error:
+                                message_processor(f"[!]\tFailed to re-encode {song_path}: {re_encode_error}", log_level="error")
+                    else:
+                        message_processor(f"[!]\tFailed to load audio from {song_path} after {max_retries} attempts. Downloading a replacement.", log_level="error", ntfy=True)
+                        # If all attempts fail, download a replacement song
+                        replacement_path, replacement_duration = single_song_download()
+                        if replacement_path:
+                            replacement_audio = AudioSegment.from_file(replacement_path)
+                            clips.append(replacement_audio)
+                            total_duration += len(replacement_audio)
+                        else:
+                            message_processor(f"[!]\tFailed to download a replacement song. Continuing to next song.", log_level="error", ntfy=True)
+            
+            if total_duration >= required_duration:
+                break
 
     if clips:
-        # Manually handle crossfade
-        if len(clips) > 1:
-            # Adjust the start time of each subsequent clip to create overlap for crossfade
-            for i in range(1, len(clips)):
-                clips[i] = clips[i].set_start(clips[i-1].end - crossfade_seconds)
-            final_clip = concatenate_audioclips(clips)
-        else:
-            final_clip = clips[0]
-
-        return final_clip
+        final_audio = clips[0]
+        for clip in clips[1:]:
+            final_audio = final_audio.append(clip, crossfade=crossfade_seconds * 1000)
+        
+        # Adjust the final audio to match the required duration
+        if len(final_audio) < required_duration:
+            final_audio = final_audio * (required_duration // len(final_audio) + 1)
+        final_audio = final_audio[:required_duration]
+        
+        # Convert pydub AudioSegment to bytes for MoviePy
+        audio_bytes = io.BytesIO()
+        final_audio.export(audio_bytes, format="mp3")
+        audio_bytes.seek(0)
+        
+        return AudioFileClip(audio_bytes)
 
     return None
+
+def re_encode_audio(input_path):
+    """
+    Re-encodes the audio file using pydub.
+    """
+    try:
+        audio = AudioSegment.from_file(input_path)
+        return audio
+    except Exception as e:
+        raise Exception(f"Pydub re-encoding failed: {e}")
+    
 
 def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_seconds=3, end_black_seconds=3):
     video_clip = ImageSequenceClip(valid_files, fps=fps)
@@ -554,39 +589,6 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     audio_clip.close()
     final_clip.close()
 
-def rename_images(IMAGES_FOLDER, filename):
-    # Regex pattern to extract the date and time
-    pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
-
-    file_path = os.path.join(IMAGES_FOLDER, filename)
-    
-    try:
-        img = Image.open(file_path)
-        
-        left, top, right, bottom = 0, 0, 800, 50 
-        
-        cropped_img = img.crop((left, top, right, bottom))
-        text = pytesseract.image_to_string(cropped_img, config='--psm 6')
-        
-        match = pattern.search(text)
-        if match:
-            date_time = match.group(0)
-            date_part, time_part = date_time.split()
-            date_part = date_part.replace('-', '')  # Format as YYYYMMDD
-            time_part = time_part.replace(':', '')  # Format as HHMMSS
-            new_date = date_part[4:] + date_part[:4]  # Convert YYYYMMDD to MMDDYYYY
-            
-            new_filename = f"vla.{new_date}.{time_part}.jpg"
-            new_file_path = os.path.join(IMAGES_FOLDER, new_filename)
-            
-            os.rename(file_path, new_file_path)
-            message_processor(f"[i]\t{filename} -> {new_filename}")
-        else:
-            message_processor(f"[!]\tDate and time not found in {filename}")
-    
-    except Exception as e:
-        os.remove(file_path)
-        message_processor(f"[!]\tError processing file {filename}: {e}")
 
 def cleanup(path):
     """
