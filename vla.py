@@ -4,9 +4,9 @@ import io
 import os
 import cv2
 import json
-import wave
 import cursor
 import shutil
+import librosa
 import hashlib
 import logging
 import textwrap
@@ -14,6 +14,7 @@ import requests
 import numpy as np
 from sys import exit
 from PIL import Image
+import soundfile as sf
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -494,26 +495,18 @@ def concatenate_songs(songs, crossfade_seconds=3, max_retries=3):
         message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
         return None
     
-    output = wave.open(io.BytesIO(), 'wb')
-    output.setnchannels(2)  # Stereo
-    output.setsampwidth(2)  # 16-bit
-    output.setframerate(44100)  # 44.1kHz
-    
+    combined = np.array([])
     total_duration = 0
     required_duration = sum(duration for _, duration in songs)
+    sample_rate = 44100  # Standard sample rate, adjust if needed
 
     for song in songs:
         song_path, song_duration = song
         for attempt in range(max_retries):
             try:
-                with wave.open(song_path, 'rb') as w:
-                    if not output.getnframes():
-                        output.setnchannels(w.getnchannels())
-                        output.setsampwidth(w.getsampwidth())
-                        output.setframerate(w.getframerate())
-                    
-                    output.writeframes(w.readframes(w.getnframes()))
-                    total_duration += song_duration
+                audio, sr = librosa.load(song_path, sr=sample_rate)
+                combined = np.concatenate((combined, audio))
+                total_duration += librosa.get_duration(y=audio, sr=sr)
                 break
             except Exception as e:
                 if attempt < max_retries - 1:
@@ -525,45 +518,30 @@ def concatenate_songs(songs, crossfade_seconds=3, max_retries=3):
                     message_processor(f"[!]\tFailed to load audio from {song_path} after {max_retries} attempts. Downloading a replacement.", log_level="error", ntfy=True)
                     replacement_path, replacement_duration = single_song_download()
                     if replacement_path:
-                        with wave.open(replacement_path, 'rb') as w:
-                            output.writeframes(w.readframes(w.getnframes()))
-                            total_duration += replacement_duration
+                        replacement_audio, sr = librosa.load(replacement_path, sr=sample_rate)
+                        combined = np.concatenate((combined, replacement_audio))
+                        total_duration += librosa.get_duration(y=replacement_audio, sr=sr)
                     else:
                         message_processor(f"[!]\tFailed to download a replacement song. Continuing to next song.", log_level="error", ntfy=True)
         
         if total_duration >= required_duration:
             break
 
-    if total_duration > 0:
+    if len(combined) > 0:
         # Adjust the final audio to match the required duration
-        frames = output.getnframes()
-        framerate = output.getframerate()
-        channels = output.getnchannels()
-        sampwidth = output.getsampwidth()
-        
-        if total_duration < required_duration:
+        required_samples = int(required_duration * sample_rate)
+        if len(combined) < required_samples:
             # Loop the audio
-            repeat_times = int(required_duration / total_duration) + 1
-            output.setpos(0)
-            frames = output.readframes(frames)
-            output.setnframes(0)
-            for _ in range(repeat_times):
-                output.writeframes(frames)
+            combined = np.tile(combined, int(np.ceil(required_samples / len(combined))))
         
         # Trim if necessary
-        required_frames = int(required_duration * framerate)
-        if output.getnframes() > required_frames:
-            output.setpos(0)
-            frames = output.readframes(required_frames)
-            output.setnframes(0)
-            output.writeframes(frames)
+        combined = combined[:required_samples]
         
         # Convert to AudioFileClip
-        output.seek(0)
-        temp_wav = io.BytesIO()
-        output.writeframes(output.readframes(output.getnframes()))
-        temp_wav.seek(0)
-        return AudioFileClip(temp_wav)
+        buffer = io.BytesIO()
+        sf.write(buffer, combined, sample_rate, format='wav')
+        buffer.seek(0)
+        return AudioFileClip(buffer)
 
     return None
 
