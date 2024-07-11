@@ -1,28 +1,26 @@
 import os
 import re
-import io
-import os
 import cv2
+import sys
 import json
 import cursor
 import shutil
-import librosa
 import hashlib
 import logging
 import textwrap
 import requests
+import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
-import soundfile as sf
 from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
 from bs4 import BeautifulSoup
-from pydub import AudioSegment
 from http.client import IncompleteRead
 from datetime import datetime, timedelta
+from graph import create_time_difference_graph
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 today_short_date = datetime.now().strftime("%m%d%Y")
@@ -489,72 +487,48 @@ def audio_download(video_duration) -> list:
     
     return songs
     
-
-def concatenate_songs(songs, crossfade_seconds=3, max_retries=3):
+def concatenate_songs(songs, crossfade_seconds=3):
+    """
+    Concatenates multiple AudioFileClip objects with manual crossfade.
+    
+    Args:
+        songs (list of tuples): List of tuples, each containing the path to an audio file and its duration.
+        crossfade_seconds (int): Duration of crossfade between clips.
+    
+    Returns:
+        AudioFileClip or None: The concatenated audio clip.
+    """
     if not songs:
         message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
         return None
     
-    combined = np.array([])
-    total_duration = 0
-    required_duration = sum(duration for _, duration in songs)
-    sample_rate = 44100  # Standard sample rate, adjust if needed
-
+    clips = []
     for song in songs:
-        song_path, song_duration = song
-        for attempt in range(max_retries):
+        if isinstance(song, tuple) and len(song) > 0:
+            song_path = song[0]  # Assuming the file path is the first element in the tuple
             try:
-                audio, sr = librosa.load(song_path, sr=sample_rate)
-                combined = np.concatenate((combined, audio))
-                total_duration += librosa.get_duration(y=audio, sr=sr)
-                break
+                clip = AudioFileClip(song_path)
+                clips.append(clip)
             except Exception as e:
-                if attempt < max_retries - 1:
-                    message_processor(f"[!]\tError loading audio from {song_path}. Attempt {attempt + 1}/{max_retries}. Retrying...", log_level="warning")
-                    new_song_path, new_song_duration = single_song_download()
-                    if new_song_path:
-                        song_path, song_duration = new_song_path, new_song_duration
-                else:
-                    message_processor(f"[!]\tFailed to load audio from {song_path} after {max_retries} attempts. Downloading a replacement.", log_level="error", ntfy=True)
-                    replacement_path, replacement_duration = single_song_download()
-                    if replacement_path:
-                        replacement_audio, sr = librosa.load(replacement_path, sr=sample_rate)
-                        combined = np.concatenate((combined, replacement_audio))
-                        total_duration += librosa.get_duration(y=replacement_audio, sr=sr)
-                    else:
-                        message_processor(f"[!]\tFailed to download a replacement song. Continuing to next song.", log_level="error", ntfy=True)
-        
-        if total_duration >= required_duration:
-            break
+                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error", ntfy=True)
+                sys.exit(1)
+                
+        else:
+            message_processor("[!]\tInvalid song data format.", log_level="error", ntfy=True)
 
-    if len(combined) > 0:
-        # Adjust the final audio to match the required duration
-        required_samples = int(required_duration * sample_rate)
-        if len(combined) < required_samples:
-            # Loop the audio
-            combined = np.tile(combined, int(np.ceil(required_samples / len(combined))))
-        
-        # Trim if necessary
-        combined = combined[:required_samples]
-        
-        # Convert to AudioFileClip
-        buffer = io.BytesIO()
-        sf.write(buffer, combined, sample_rate, format='wav')
-        buffer.seek(0)
-        return AudioFileClip(buffer)
+    if clips:
+        # Manually handle crossfade
+        if len(clips) > 1:
+            # Adjust the start time of each subsequent clip to create overlap for crossfade
+            for i in range(1, len(clips)):
+                clips[i] = clips[i].set_start(clips[i-1].end - crossfade_seconds)
+            final_clip = concatenate_audioclips(clips)
+        else:
+            final_clip = clips[0]
+
+        return final_clip
 
     return None
-
-def re_encode_audio(input_path):
-    """
-    Re-encodes the audio file using pydub.
-    """
-    try:
-        audio = AudioSegment.from_file(input_path)
-        return audio
-    except Exception as e:
-        raise Exception(f"Pydub re-encoding failed: {e}")
-    
 
 def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_seconds=3, end_black_seconds=3):
     video_clip = ImageSequenceClip(valid_files, fps=fps)
@@ -580,6 +554,39 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     audio_clip.close()
     final_clip.close()
 
+def rename_images(IMAGES_FOLDER, filename):
+    # Regex pattern to extract the date and time
+    pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+
+    file_path = os.path.join(IMAGES_FOLDER, filename)
+    
+    try:
+        img = Image.open(file_path)
+        
+        left, top, right, bottom = 0, 0, 800, 50 
+        
+        cropped_img = img.crop((left, top, right, bottom))
+        text = pytesseract.image_to_string(cropped_img, config='--psm 6')
+        
+        match = pattern.search(text)
+        if match:
+            date_time = match.group(0)
+            date_part, time_part = date_time.split()
+            date_part = date_part.replace('-', '')  # Format as YYYYMMDD
+            time_part = time_part.replace(':', '')  # Format as HHMMSS
+            new_date = date_part[4:] + date_part[:4]  # Convert YYYYMMDD to MMDDYYYY
+            
+            new_filename = f"vla.{new_date}.{time_part}.jpg"
+            new_file_path = os.path.join(IMAGES_FOLDER, new_filename)
+            
+            os.rename(file_path, new_file_path)
+            message_processor(f"[i]\t{filename} -> {new_filename}")
+        else:
+            message_processor(f"[!]\tDate and time not found in {filename}")
+    
+    except Exception as e:
+        os.remove(file_path)
+        message_processor(f"[!]\tError processing file {filename}: {e}")
 
 def cleanup(path):
     """
@@ -680,8 +687,7 @@ def main():
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
-            sleep_timer = round(sleep_timer)
-            message_processor(f"Sleeping for {sleep_timer  / 60} minutes until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
+            message_processor(f"Sleeping for {sleep_timer} seconds / {sleep_timer  / 60} minutes until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
         else:
