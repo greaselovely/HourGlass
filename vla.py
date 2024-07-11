@@ -9,7 +9,7 @@ import hashlib
 import logging
 import textwrap
 import requests
-import pytesseract
+# import pytesseract
 import numpy as np
 from sys import exit
 from PIL import Image
