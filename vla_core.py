@@ -73,59 +73,58 @@ class ImageDownloader:
         """
         return hashlib.sha256(image_content).hexdigest()
 
-    def download_image(self, session, IMAGE_URL):
+    def download_image(self, session, IMAGE_URL, retry_delay=5):
         """
         Downloads an image from the specified URL and saves it to the output path.
 
         This method handles potential hash collisions and updates the previous image information.
+        If a hash collision is detected, it will retry the download once after a delay.
 
         Args:
             session (requests.Session): The session object to use for the HTTP request.
             IMAGE_URL (str): The URL of the image to download.
+            retry_delay (int): Delay in seconds before retrying if a hash collision occurs.
 
         Returns:
             tuple: A tuple containing the image size and filename if successful, or (None, None) if unsuccessful.
         """
-        r = session.get(IMAGE_URL)
-        if r is None or r.status_code != 200:
-            logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
-            return None, None
+        for attempt in range(2):  # We'll try twice at most: initial attempt + one retry
+            r = session.get(IMAGE_URL)
+            if r is None or r.status_code != 200:
+                logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
+                return None, None
 
-        image_content = r.content
-        image_size = len(image_content)
-        image_hash = self.compute_hash(image_content)
+            image_content = r.content
+            image_size = len(image_content)
+            image_hash = self.compute_hash(image_content)
 
-        if image_size == 0:
-            logging.error(f"[!]\t{RED_CIRCLE} Code: {r.status_code} Zero Size")
-            return None, None
+            if image_size == 0:
+                logging.error(f"[!]\t{RED_CIRCLE} Code: {r.status_code} Zero Size")
+                return None, None
 
-        today_short_time = datetime.now().strftime("%H%M%S")
-        filename = f'vla.{today_short_date}.{today_short_time}.jpg'
-        with open(self.out_path / filename, 'wb') as f:
-            f.write(image_content)
+            today_short_time = datetime.now().strftime("%H%M%S")
+            filename = f'vla.{today_short_date}.{today_short_time}.jpg'
+            with open(self.out_path / filename, 'wb') as f:
+                f.write(image_content)
 
-        if self.prev_image_hash == image_hash:
-            """
-            uncomment if you want to inspect the images by hand.  
-            Also uncomment the hash_collision_path above under __init__.
-            """
-            # filename = f'{today_short_date}_{today_short_time}.jpg'
-            # collision_file_path = self.hash_collisions_path / filename
-            # with open(collision_file_path, 'wb') as f:
-            #     f.write(image_content)
-            # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
-            logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
-            return None, None
-        else:
-            # logging.info(f"{time_stamp} {RED_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
-            logging.info(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+            if self.prev_image_hash == image_hash:
+                if attempt == 0:  # If it's the first attempt
+                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}. Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue  # Try again
+                else:
+                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.")
+                    return None, None
+            else:
+                logging.info(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+                self.prev_image_filename = filename
+                self.prev_image_size = image_size
+                self.prev_image_hash = image_hash
+                return image_size, filename
 
-        self.prev_image_filename = filename
-        self.prev_image_size = image_size
-        self.prev_image_hash = image_hash  # Ensure this is updated only here
-        
-        return image_size, filename  # Image saved, return size
-
+        # This line should never be reached, but it's here for completeness
+        return None, None
+    
 def clear():
     """
     Clears the terminal screen.
@@ -137,10 +136,11 @@ def clear():
 
 def log_jamming(log_message):
     """
-    Formats a log message to fit a specified width with indentation.
+    Formats a log message to fit a specified width with indentation.  He fixes the cable.
 
     This function wraps the log message to a width of 90 characters and adds
     indentation to align subsequent lines with the end of the log preface.
+    Don't be fatuous Jeffery.
 
     Args:
         log_message (str): The log message to be formatted.

@@ -88,11 +88,12 @@ def main():
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
-            message_processor(f"Sleeping for {sleep_timer} seconds / {sleep_timer  / 60} minutes until the sunrise at {sunrise_time}.", ntfy=True, print_me=True)
+            sleep_timer = int(sleep_timer)
+            message_processor(f"Sleeping: {sleep_timer  / 60} min. Sunrise: {sunrise_time}. Sunset: {sunset_time}", ntfy=True, print_me=True)
             sleep(sleep_timer)
-            message_processor(f"Woke up! The current time is {datetime.now().time()}.", ntfy=True, print_me=True)
+            message_processor(f"Starting: {datetime.now().time()}.", ntfy=True, print_me=True)
         else:
-            message_processor("[i]\tSunrise time has already passed for today.", ntfy=True, print_me=True)
+            message_processor("[i]\tSunrise time has already passed for today.", print_me=True)
 
         session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
         
