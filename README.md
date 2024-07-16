@@ -45,7 +45,7 @@ python __main__.py
 or
 
 ```
-python ../vla
+python ../VLA
 ```
 
 or

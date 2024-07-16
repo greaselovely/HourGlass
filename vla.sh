@@ -4,7 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status.
 
 # Function to activate virtual environment and run Python command
 run_python_command() {
-    source venv/bin/activate && python3 -c "$1"
+    venv/bin/python3 -c "$1"
 }
 
 # Check if we're already in a tmux session
@@ -57,6 +57,6 @@ fi
 exec tmux new-session -s vla-timelapse \; \
     split-window -h \; \
     select-pane -t 0 \; \
-    send-keys "source venv/bin/activate && python -m __main__" C-m \; \
+    send-keys "venv/bin/python -m __main__" C-m \; \
     select-pane -t 1 \; \
     send-keys "tail -f '$LOG_FILE'" C-m
