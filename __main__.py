@@ -91,9 +91,9 @@ def main():
             sleep_timer = int(sleep_timer)
             message_processor(f"Sleeping: {sleep_timer  / 60} min. Sunrise: {sunrise_time}. Sunset: {sunset_time}", ntfy=True, print_me=True)
             sleep(sleep_timer)
-            message_processor(f"Starting: {datetime.now().time()}.", ntfy=True, print_me=True)
+            message_processor(f"Starting: {now.time()}.", ntfy=True, print_me=True)
         else:
-            message_processor("[i]\tSunrise time has already passed for today.", print_me=True)
+            message_processor(f"[i]\t{now.time()}  - after sunrise.", print_me=True)
 
         session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
         

@@ -109,7 +109,7 @@ class ImageDownloader:
 
             if self.prev_image_hash == image_hash:
                 if attempt == 0:  # If it's the first attempt
-                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}. {retry_delay}s")
+                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
                     sleep(retry_delay)
                     continue  # Try again
                 else:
