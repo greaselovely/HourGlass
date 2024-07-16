@@ -57,7 +57,8 @@ def load_config():
             "sun": {
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
-                "SUNSET_TIME_ADD": 60
+                "SUNSET_TIME_ADD": 60,
+                "URL": "https://www.timeanddate.com/sun/@5481136"
             },
             "files_and_folders": {
                 "LOG_FILE_NAME": "time_lapse.log",
