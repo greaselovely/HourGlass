@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 
+set -e  # Exit immediately if a command exits with a non-zero status.
+
+# Function to activate virtual environment and run Python command
+run_python_command() {
+    source venv/bin/activate && python3 -c "$1"
+}
+
 # Check if we're already in a tmux session
 if [ -n "$TMUX" ]; then
     echo "Already in a tmux session. Running vla directly."
-    source venv/bin/activate && python vla.py
+    run_python_command "import __main__; __main__.main()"
     exit 0
 fi
 
@@ -13,8 +20,8 @@ if ! command -v tmux &> /dev/null; then
     exit 1
 fi
 
-# Get the log file path from vla.py with error handling and debugging
-LOG_FILE=$(bash -c "source venv/bin/activate && python3 -c \"
+# Get the log file path
+LOG_FILE=$(run_python_command "
 import sys
 import os
 
@@ -22,15 +29,15 @@ import os
 sys.path.append(os.getcwd())
 
 try:
-    import vla
-    print(vla.LOGGING_FILE)
+    from vla_config import LOGGING_FILE
+    print(LOGGING_FILE)
 except ImportError as e:
-    print(f'Error importing vla: {e}', file=sys.stderr)
+    print(f'Error importing vla_config: {e}', file=sys.stderr)
     sys.exit(1)
 except AttributeError as e:
     print(f'Error accessing LOGGING_FILE: {e}', file=sys.stderr)
     sys.exit(1)
-\"")
+")
 
 # Check if LOG_FILE is empty or contains an error message
 if [ -z "$LOG_FILE" ] || [[ "$LOG_FILE" == Error* ]]; then
@@ -44,13 +51,12 @@ echo "Log file path: $LOG_FILE"
 if tmux has-session -t vla-timelapse 2>/dev/null; then
     echo "Session 'vla-timelapse' already exists. Attaching to it."
     exec tmux attach-session -t vla-timelapse
-    exit 0
 fi
 
 # Start tmux session
 exec tmux new-session -s vla-timelapse \; \
     split-window -h \; \
     select-pane -t 0 \; \
-    send-keys "source venv/bin/activate && python vla.py" C-m \; \
+    send-keys "source venv/bin/activate && python -m __main__" C-m \; \
     select-pane -t 1 \; \
     send-keys "tail -f '$LOG_FILE'" C-m

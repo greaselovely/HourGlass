@@ -1,6 +1,3 @@
-Thank you for providing the tree structure. I'll update the README to include this information and reflect the current state of your project. Here's the updated README:
-
-```markdown
 # VLA Webcam Time-Lapse Video Creator
 
 ## Overview
@@ -14,19 +11,6 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 - **Time-Lapse Video Creation:** Generates a time-lapse video from the collected images.
 - **Audio Track Addition:** Adds a soundtrack to the time-lapse video.
 
-## Project Structure
-
-```
-├── README.md
-├── __main__.py
-├── config.json
-├── image_dup.py
-├── requirements.txt
-├── setup.sh
-├── vla.sh
-├── vla_config.py
-└── vla_core.py
-```
 
 ## Tested On
 
@@ -56,6 +40,12 @@ To run the script, navigate to the script's directory and execute:
 
 ```
 python __main__.py
+```
+
+or
+
+```
+python ../vla
 ```
 
 or
