@@ -57,6 +57,6 @@ fi
 exec tmux new-session -s vla-timelapse \; \
     split-window -h \; \
     select-pane -t 0 \; \
-    send-keys "venv/bin/python -m __main__" C-m \; \
+    send-keys "venv/bin/python ../VLA" C-m \; \
     select-pane -t 1 \; \
     send-keys "tail -f '$LOG_FILE'" C-m
