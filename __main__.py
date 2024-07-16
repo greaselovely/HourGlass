@@ -101,8 +101,8 @@ def main():
         i = 1
         while True:
             try:
-                print("[i]\tPause for break...")
-                sleep(7)
+                # print("[i]\tPause for break...")
+                # sleep(7)
                 TARGET_HOUR = sunset_time.hour
                 TARGET_MINUTE = sunset_time.minute
                 SECONDS = choice(range(15, 22))  # sleep timer seconds
