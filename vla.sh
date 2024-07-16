@@ -53,10 +53,9 @@ if tmux has-session -t vla-timelapse 2>/dev/null; then
     exec tmux attach-session -t vla-timelapse
 fi
 
-# Start tmux session
+# Start tmux session with the new layout
 exec tmux new-session -s vla-timelapse \; \
-    split-window -h \; \
-    select-pane -t 0 \; \
     send-keys "venv/bin/python ../VLA" C-m \; \
-    select-pane -t 1 \; \
-    send-keys "tail -f '$LOG_FILE'" C-m
+    split-window -v -p 66 \; \
+    send-keys "tail -f '$LOG_FILE'" C-m \; \
+    select-pane -t 0
