@@ -1,3 +1,6 @@
+Thank you for providing the tree structure. I'll update the README to include this information and reflect the current state of your project. Here's the updated README:
+
+```markdown
 # VLA Webcam Time-Lapse Video Creator
 
 ## Overview
@@ -11,12 +14,25 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 - **Time-Lapse Video Creation:** Generates a time-lapse video from the collected images.
 - **Audio Track Addition:** Adds a soundtrack to the time-lapse video.
 
+## Project Structure
+
+```
+├── README.md
+├── __main__.py
+├── config.json
+├── image_dup.py
+├── requirements.txt
+├── setup.sh
+├── vla.sh
+├── vla_config.py
+└── vla_core.py
+```
+
 ## Tested On
 
 - **Ubuntu**
 - **Fedora**
 - **Debian**
-
 
 ## Requirements
 
@@ -24,7 +40,7 @@ This script automatically downloads images from the Very Large Array (VLA) obser
 
 ## Setup
 
-1. **venv Recommended**
+1. **Virtual Environment (Recommended):** It's recommended to use a virtual environment for this project.
 
 2. **Install Required Packages:** Install the required Python packages by running:
 
@@ -32,14 +48,14 @@ This script automatically downloads images from the Very Large Array (VLA) obser
     bash setup.sh
     ```
 
-3. **Configuration:** The script uses a `config.json` file for proxy settings (if needed) and for ntfy.sh subscription URL. On the first run, it will attempt to create this file with default settings if it doesn't exist.
+3. **Configuration:** The script uses a `config.json` file for settings such as proxy configuration (if needed) and the ntfy.sh topic for notifications. On the first run, it will create this file with default settings if it doesn't exist.
 
 ## Usage
 
 To run the script, navigate to the script's directory and execute:
 
 ```
-python vla.py
+python __main__.py
 ```
 
 or
@@ -52,20 +68,33 @@ The script will start downloading images, logging its activities, and saving the
 
 ### Customization
 
-You can modify the following variables within the script to customize the behavior:
+You can modify the following in the `config.json` file to customize the behavior:
 
-- `IMAGE_URL`: URL of the webcam image to download.
-- `SECONDS`: Interval range for image downloads (default is 15 to 22 seconds).
-- `fps`: Frames per second for the generated time-lapse video.
+- Image download URL
+- Download interval range
+- Frames per second for the time-lapse video
+- Notification settings
 
 ## Logging
 
-The script logs its activity, including any errors encountered, to a file named `vla_log.txt` within a `VLA/logging` directory in your home directory.
+The script logs its activity, including any errors encountered, to a file named `time_lapse.log` within a `VLA/logging` directory in your home directory.
 
 ## Output
 
-The generated time-lapse video will be saved in the `VLA` directory within your home directory, named with the date of creation.
+The generated time-lapse video will be saved in the `VLA/video` directory within your home directory, named with the date of creation.
 
-## Note
+## Contributing
 
-This script is intended for educational and hobbyist purposes. Please ensure you have the right to download and use images from the VLA observatory webcam.
+Contributions to improve the script are welcome. Please feel free to submit issues or pull requests on the project repository.
+
+## File Descriptions
+
+- `README.md`: This file, containing project documentation and usage instructions.
+- `__main__.py`: The main entry point of the script. It orchestrates the overall process of image downloading and video creation.
+- `config.json`: Configuration file storing settings such as URLs, paths, and notification preferences.
+- `image_dup.py`: Utility script to create duplicate images for testing.
+- `requirements.txt`: Lists all Python package dependencies required for the project.
+- `setup.sh`: Shell script to set up the project environment and install dependencies.
+- `vla.sh`: Shell script to run the main Python script, using tmux.
+- `vla_config.py`: Manages loading and parsing of the configuration from `config.json`.
+- `vla_core.py`: Contains core functionality for image processing, video creation, and audio handling.
