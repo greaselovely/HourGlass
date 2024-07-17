@@ -1,47 +1,45 @@
+# vla_config.py
+
 import json
 import logging
 import os, sys
+import stat
 from pathlib import Path
 from datetime import datetime
+
+def ensure_config_readonly(config_path):
+    """
+    Checks if the config.json file is read-only for the current user,
+    and sets it to read-only if it isn't.
+    """
+    if not config_path.exists():
+        logging.error("config.json does not exist")
+        return False
+
+    try:
+        config_path.chmod(0o600)
+        logging.info("config.json set to 600")
+    except PermissionError:
+        logging.error("Failed to set config.json to read-only. Check your permissions.")
+        return False
+
+    return True
 
 def load_config():
     """
     Loads configuration settings from a 'config.json' file, creating it if it doesn't exist,
     and updating it if a newer version is available.
 
-    This function performs the following steps:
-    1. Attempts to read the 'config.json' file from the same directory as the script.
-    2. If the file doesn't exist, creates a new one with default settings.
-    3. If the file exists but has an older version, updates it to the current version.
-    4. Handles JSON decoding errors and logs appropriate messages.
-
     Returns:
         dict or None: A dictionary with configuration settings if successful, None otherwise.
     """
-
     CONFIG_FILE = 'config.json'
     LOCAL_PATH = Path(__file__).resolve().parent
     CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
 
-    CURRENT_VERSION = 1.2  # Increment this when making changes to the config structure
+    CURRENT_VERSION = 1.3  # Increment this when making changes to the config structure
 
     def create_default_config():
-        """
-        Creates a default configuration dictionary with predefined settings.
-
-        This function sets up default values for various configuration parameters including:
-        - Proxy settings
-        - Notification URL
-        - Sun-related times
-        - File and folder paths
-        - URLs for image and webpage
-        - Output symbols
-        - User agent strings
-
-        Returns:
-            dict: A dictionary containing the default configuration settings.
-        """
-
         home = Path.home()
         vla_base = os.path.join(home, "VLA")
         return {
@@ -49,6 +47,13 @@ def load_config():
             "proxies": {
                 "http": "",
                 "https": ""
+            },
+            "auth": {
+                "youtube" : {
+                    "client_id" : "",
+                    "client_secret" : "",
+                    "refresh_token" : ""
+                }
             },
             "alerts": {
                 "comment" : "This is just the topic subscription name, not the entire URL",
@@ -89,21 +94,6 @@ def load_config():
         }
 
     def update_config(config):
-        """
-        Updates an existing configuration to the current version.
-
-        This function performs the following steps:
-        1. Checks if the provided config is outdated.
-        2. If outdated, merges the existing config with the default config.
-        3. Updates the version number to the current version.
-        4. Writes the updated config back to the file.
-
-        Args:
-            config (dict): The existing configuration dictionary.
-
-        Returns:
-            dict: The updated configuration dictionary.
-        """
         if 'version' not in config or config['version'] < CURRENT_VERSION:
             default_config = create_default_config()
             updated_config = default_config.copy()
@@ -125,6 +115,9 @@ def load_config():
         return config
 
     try:
+        if not ensure_config_readonly(CONFIG_PATH):
+            logging.warning("Proceeding with potentially writable config file")
+
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         return update_config(config)
@@ -133,33 +126,40 @@ def load_config():
         default_config = create_default_config()
         with open(CONFIG_PATH, 'w') as file:
             json.dump(default_config, file, indent=2)
+        ensure_config_readonly(CONFIG_PATH)
         return default_config
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
         return None
+
+def update_config(new_config):
+    """
+    Updates the configuration in config.json.
+    Temporarily changes permissions to allow writing, then restores read-only.
+    """
+    CONFIG_FILE = 'config.json'
+    LOCAL_PATH = Path(__file__).resolve().parent
+    CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
     
+    # Temporarily make the file writable
+    current_mode = CONFIG_PATH.stat().st_mode
+    writable_mode = current_mode | stat.S_IWUSR
 
-"""
-This section loads the configuration using the load_config() function and applies
-the settings to global variables. It performs the following steps:
-1. Calls load_config() to get the configuration dictionary.
-2. If successful, extracts various settings from the config and assigns them to global variables.
-3. Sets up logging with the specified file and format.
-4. If loading fails, logs an error message and exits the script.
+    try:
+        CONFIG_PATH.chmod(writable_mode)
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(new_config, f, indent=2)
+        logging.info("config.json updated successfully")
+    except IOError:
+        logging.error("Error writing to config.json")
+        return False
+    finally:
+        # Restore read-only permissions
+        ensure_config_readonly(CONFIG_PATH)
 
-The global variables set include:
-- Proxy settings
-- Sun-related times
-- File and folder paths
-- URLs for image and webpage
-- Output symbols
-- User agents
-- Notification URL
-- Current date in short format
+    return True
 
-Logging is configured to write to a file specified in the config.
-"""
-
+# Load the configuration
 config = load_config()
 
 if config:
@@ -200,3 +200,40 @@ if config:
 else:
     logging.error("Failed to load configuration. Exiting.")
     sys.exit(1)
+
+def reload_config():
+    global config, PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER
+    global LOGGING_FOLDER, AUDIO_FOLDER, LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE
+    global RED_CIRCLE, USER_AGENTS, NTFY_TOPIC, today_short_date
+
+    config = load_config()
+    if config:
+        PROXIES = config['proxies']
+        SUNRISE = config['sun']['SUNRISE']
+        SUNSET = config['sun']['SUNSET']
+        SUNSET_TIME_ADD = config['sun']['SUNSET_TIME_ADD']
+        SUN_URL = config['sun']['URL']
+        
+        VLA_BASE = config['files_and_folders']['VLA_BASE']
+        VIDEO_FOLDER = config['files_and_folders']['VIDEO_FOLDER']
+        IMAGES_FOLDER = config['files_and_folders']['IMAGES_FOLDER']
+        LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
+        AUDIO_FOLDER = config['files_and_folders']['AUDIO_FOLDER']
+        LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
+        LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
+        
+        IMAGE_URL = config['urls']['IMAGE_URL']
+        WEBPAGE = config['urls']['WEBPAGE']
+        
+        GREEN_CIRCLE = config['output_symbols']['GREEN_CIRCLE']
+        RED_CIRCLE = config['output_symbols']['RED_CIRCLE']
+        
+        USER_AGENTS = config['user_agents']
+
+        NTFY_TOPIC = config['alerts']['ntfy']
+        
+        today_short_date = datetime.now().strftime("%m%d%Y")
+
+        logging.info("Configuration reloaded successfully")
+    else:
+        logging.error("Failed to reload configuration.")

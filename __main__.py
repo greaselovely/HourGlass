@@ -1,6 +1,8 @@
+# __main__.py
+
 from vla_config import *
 from vla_core import *
-# from vla_upload import *
+from vla_upload import *
 
 def main_sequence(IMAGES_FOLDER, NTFY_TOPIC, video_path, AUDIO_FOLDER):
     """
@@ -43,15 +45,25 @@ def main_sequence(IMAGES_FOLDER, NTFY_TOPIC, video_path, AUDIO_FOLDER):
         date_obj = datetime.strptime(today_short_date, "%m%d%Y")
         formatted_date = date_obj.strftime("%m/%d/%Y")
         video_title = f"VLA {formatted_date}"
-        video_description = f"Timelapse video of the @NRAO Very Large Array on {formatted_date}"
-        video_id = upload_to_youtube(video_path, video_title, video_description)
+        video_description = f"@NRAO Very Large Array Time Lapse for {formatted_date}"
         
-        if video_id:
-            message_processor(f"Video uploaded to YouTube. ID: {video_id}", ntfy=True)
+        video_id, youtube_client = upload_to_youtube(video_path, video_title, video_description)
+        
+        if video_id and youtube_client:
+            message_processor(f"[i]\tVideo uploaded to YouTube ID: {video_id}", ntfy=True)
+            
+            # Now, add the video to the playlist
+            success, message = add_video_to_playlist(youtube_client, video_id, "VLA")
+            if success:
+                message_processor(f"[i]\t{message}", ntfy=True)
+                cleanup(NTFY_TOPIC, VIDEO_FOLDER)
+            else:
+                message_processor(f"[!]\t{message}", ntfy=True)
+            
         else:
-            message_processor("Failed to upload video to YouTube", ntfy=True)
+            message_processor("[!]\tFailed to upload video to YouTube", ntfy=True)
+            message_processor(f"[i]\t{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
 
-        message_processor(f"[i]\t{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
         cleanup(NTFY_TOPIC, IMAGES_FOLDER)
         cleanup(NTFY_TOPIC, AUDIO_FOLDER)
 
