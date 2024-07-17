@@ -1,5 +1,6 @@
 from vla_config import *
 from vla_core import *
+from vla_upload import *
 
 def main_sequence(IMAGES_FOLDER, NTFY_TOPIC, video_path, AUDIO_FOLDER):
     """
@@ -34,7 +35,22 @@ def main_sequence(IMAGES_FOLDER, NTFY_TOPIC, video_path, AUDIO_FOLDER):
     else:
         final_song = full_audio_path[0][0]
     create_time_lapse(valid_files, video_path, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
+
     if video_path and os.path.exists(video_path):
+        message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
+        
+        # Upload to YouTube
+        date_obj = datetime.strptime(today_short_date, "%m%d%Y")
+        formatted_date = date_obj.strftime("%m/%d/%Y")
+        video_title = f"VLA {formatted_date}"
+        video_description = f"Timelapse video of the @NRAO Very Large Array on {formatted_date}"
+        video_id = upload_to_youtube(video_path, video_title, video_description)
+        
+        if video_id:
+            message_processor(f"Video uploaded to YouTube. ID: {video_id}", ntfy=True)
+        else:
+            message_processor("Failed to upload video to YouTube", ntfy=True)
+
         message_processor(f"[i]\t{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
         cleanup(NTFY_TOPIC, IMAGES_FOLDER)
         cleanup(NTFY_TOPIC, AUDIO_FOLDER)
@@ -89,7 +105,7 @@ def main():
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
             sleep_timer = int(sleep_timer)
-            message_processor(f"Sleeping: {sleep_timer  / 60} min. Sunrise: {sunrise_time}. Sunset: {sunset_time}", ntfy=True, print_me=True)
+            message_processor(f"Sleeping: {sleep_timer  // 60} min.\nStart: {sunrise_time.strftime("%H:%M")}.\nEnd: {sunset_datetime.strftime("%H:%M")}", ntfy=True, print_me=True)
             sleep(sleep_timer)
             message_processor(f"Starting: {now.time()}.", ntfy=True, print_me=True)
         else:
@@ -105,14 +121,13 @@ def main():
                 # print("[i]\tPause for break...")
                 # sleep(7)
                 TARGET_HOUR = sunset_time.hour
-                TARGET_MINUTE = sunset_time.minute
+                TARGET_MINUTE = sunset_time.minute #+ SUNSET_TIME_ADD
                 SECONDS = choice(range(15, 22))  # sleep timer seconds
 
                 image_size, filename = downloader.download_image(session, IMAGE_URL)
                 
                 if image_size is not None:
                     activity(i, IMAGES_FOLDER, image_size)
-                    # rename_images(IMAGES_FOLDER, filename)
                 else:
                     clear()
                     print(f"[!]\t{RED_CIRCLE} Iteration: {i}")
