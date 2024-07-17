@@ -1,6 +1,6 @@
 from vla_config import *
 from vla_core import *
-from vla_upload import *
+# from vla_upload import *
 
 def main_sequence(IMAGES_FOLDER, NTFY_TOPIC, video_path, AUDIO_FOLDER):
     """
