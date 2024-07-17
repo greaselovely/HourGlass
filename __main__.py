@@ -101,6 +101,8 @@ def main():
         sunset_datetime = datetime.combine(now.date(), sunset_time)
         sunset_datetime += timedelta(minutes=SUNSET_TIME_ADD)
 
+        print(f"Sleeping: {sleep_timer  // 60} min.\nStart: {sunrise_time.strftime("%H:%M")}.\nEnd: {sunset_datetime.strftime("%H:%M")}")
+        sys.exit()
         if now < sunrise_datetime:
             time_diff = (sunrise_datetime - now).total_seconds()
             sleep_timer = time_diff
