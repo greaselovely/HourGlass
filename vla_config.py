@@ -9,8 +9,35 @@ from datetime import datetime
 
 def ensure_config_readonly(config_path):
     """
-    Checks if the config.json file is read-only for the current user,
-    and sets it to read-only if it isn't.
+    Ensure the config.json file is read-only for the current user.
+
+    This function checks the permissions of the config.json file and sets it to read-only 
+    (mode 600) if it isn't already. This helps protect sensitive configuration data.
+
+    The function performs the following steps:
+    1. Checks if the config file exists at the given path.
+    2. If it exists, attempts to set its permissions to read-only (600).
+    3. Logs the result of the operation.
+
+    Args:
+    config_path (Path): A Path object representing the location of the config.json file.
+
+    Returns:
+    bool: True if the file exists and was successfully set to read-only (or already was),
+          False if the file doesn't exist or if there was a permission error.
+
+    Side Effects:
+    - Modifies the permissions of the config.json file if successful.
+    - Logs info or error messages using the logging module.
+
+    Raises:
+    PermissionError: If the function lacks the necessary permissions to modify the file.
+                     This error is caught and logged, and the function returns False.
+
+    Note:
+    - This function assumes the use of a Unix-like permissions system (mode 600).
+    - It requires the 'logging' module to be properly configured.
+    - The function will return True even if the file was already read-only.
     """
     if not config_path.exists():
         logging.error("config.json does not exist")
@@ -27,11 +54,41 @@ def ensure_config_readonly(config_path):
 
 def load_config():
     """
-    Loads configuration settings from a 'config.json' file, creating it if it doesn't exist,
-    and updating it if a newer version is available.
+    Load, create, or update configuration settings from a 'config.json' file.
+
+    This function manages the configuration file for the application. It performs the following operations:
+    1. Attempts to load an existing 'config.json' file.
+    2. If the file doesn't exist, creates a new one with default settings.
+    3. If the file exists but has an older version, updates it to the current version.
+    4. Ensures the config file is set to read-only for security.
+
+    The function uses several internal helper functions:
+    - create_default_config(): Creates a dictionary with default configuration settings.
+    - update_config(config): Updates an existing config to the current version, preserving existing values where possible.
+
+    Global Constants:
+    - CONFIG_FILE: Name of the configuration file ('config.json').
+    - LOCAL_PATH: Path to the directory containing this script.
+    - CONFIG_PATH: Full path to the config file.
+    - CURRENT_VERSION: Current version number of the configuration structure.
 
     Returns:
-        dict or None: A dictionary with configuration settings if successful, None otherwise.
+    dict or None: A dictionary containing the configuration settings if successful.
+                  None if there was an error in loading or parsing the config file.
+
+    Side Effects:
+    - May create or modify the 'config.json' file.
+    - Logs information about config file updates or errors.
+    - Prints messages to the console in case of file creation or errors.
+
+    Raises:
+    FileNotFoundError: Caught internally if the config file doesn't exist.
+    json.JSONDecodeError: Caught internally if there's an error parsing the JSON.
+
+    Note:
+    - The function attempts to set the config file to read-only but will proceed even if this fails.
+    - The configuration includes settings for proxies, authentication, file paths, URLs, and other application-specific data.
+    - User agents list is included in the config for web scraping purposes.
     """
     CONFIG_FILE = 'config.json'
     LOCAL_PATH = Path(__file__).resolve().parent
@@ -40,6 +97,37 @@ def load_config():
     CURRENT_VERSION = 1.3  # Increment this when making changes to the config structure
 
     def create_default_config():
+        """
+        Create and return a dictionary containing default configuration settings.
+
+        This function generates a default configuration structure for the application.
+        It sets up various parameters including file paths, URLs, authentication settings,
+        and other application-specific data.
+
+        The function performs the following steps:
+        1. Determines the user's home directory.
+        2. Creates a base path for VLA (Very Large Array) related files and folders.
+        3. Constructs a dictionary with default values for all configuration settings.
+
+        Returns:
+        dict: A dictionary containing the default configuration settings. Key sections include:
+            - version: Current version of the configuration structure.
+            - proxies: HTTP and HTTPS proxy settings (empty by default).
+            - auth: YouTube authentication credentials (empty by default).
+            - alerts: Notification settings for the application.
+            - sun: Default sunrise and sunset times, and related URL.
+            - files_and_folders: Paths for various folders used by the application.
+            - urls: URLs for image source and webpage.
+            - output_symbols: Unicode symbols used for output formatting.
+            - user_agents: A list of user agent strings for web requests.
+
+        Note:
+        - The function uses the global CURRENT_VERSION constant to set the configuration version.
+        - File paths are constructed relative to the user's home directory.
+        - Sensitive fields (like authentication credentials) are left empty by default.
+        - The sun URL is set to a specific location (5481136) which may need to be adjusted for different geographical areas.
+        - The user_agents list includes a variety of browser and device combinations for web scraping purposes.
+        """
         home = Path.home()
         vla_base = os.path.join(home, "VLA")
         return {
@@ -94,6 +182,40 @@ def load_config():
         }
 
     def update_config(config):
+        """
+        Update an existing configuration to the current version while preserving existing settings.
+
+        This function checks if the provided configuration is up-to-date and updates it if necessary.
+        It ensures that new configuration options are added while preserving existing user settings.
+
+        The function performs the following steps:
+        1. Checks if the provided config has a version and if it's less than the current version.
+        2. If an update is needed:
+        a. Creates a new default configuration.
+        b. Merges the existing configuration with the default, prioritizing existing values.
+        c. Updates the version number to the current version.
+        d. Writes the updated configuration back to the config file.
+        e. Logs the update action.
+
+        Args:
+        config (dict): The existing configuration dictionary to be updated.
+
+        Returns:
+        dict: The updated configuration dictionary. If no update was needed, returns the original config.
+
+        Side Effects:
+        - May modify the config.json file on disk if an update is performed.
+        - Logs an info message when the configuration is updated.
+
+        Global Variables Used:
+        - CURRENT_VERSION: The current version number of the configuration structure.
+        - CONFIG_PATH: The file path where the configuration is stored.
+
+        Note:
+        - This function uses a nested dictionary update strategy, allowing for partial updates of nested structures.
+        - The function assumes that `create_default_config()` and `logging` are available in the scope.
+        - JSON serialization is used for writing the updated config to file, with indentation for readability.
+        """
         if 'version' not in config or config['version'] < CURRENT_VERSION:
             default_config = create_default_config()
             updated_config = default_config.copy()
@@ -116,26 +238,62 @@ def load_config():
 
     try:
         if not ensure_config_readonly(CONFIG_PATH):
-            logging.warning("Proceeding with potentially writable config file")
+            print("Proceeding with potentially writable config file")
 
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
-        return update_config(config)
+        config = update_config(config)
+
     except FileNotFoundError:
-        logging.warning(f"config.json not found at {CONFIG_PATH}; creating with default values.")
-        default_config = create_default_config()
+        print(f"config.json not found at {CONFIG_PATH}; creating with default values.")
+        config = create_default_config()
         with open(CONFIG_PATH, 'w') as file:
-            json.dump(default_config, file, indent=2)
+            json.dump(config, file, indent=2)
         ensure_config_readonly(CONFIG_PATH)
-        return default_config
+    
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
+        print(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
         return None
+    
+    return config
 
 def update_config(new_config):
     """
-    Updates the configuration in config.json.
-    Temporarily changes permissions to allow writing, then restores read-only.
+    Update the configuration in config.json with new settings.
+
+    This function updates the configuration file (config.json) with the provided new configuration.
+    It handles file permissions to ensure the file is writable during the update process and
+    is set back to read-only afterwards for security.
+
+    The function performs the following steps:
+    1. Identifies the location of the config.json file.
+    2. Temporarily changes the file permissions to make it writable.
+    3. Writes the new configuration to the file.
+    4. Restores the file to read-only status.
+
+    Args:
+    new_config (dict): A dictionary containing the new configuration settings to be written to the file.
+
+    Returns:
+    bool: True if the update was successful, False if there was an error writing to the file.
+
+    Side Effects:
+    - Modifies the contents of the config.json file.
+    - Temporarily changes file permissions.
+    - Logs information about the update process.
+
+    Raises:
+    IOError: Caught internally if there's an error writing to the file.
+
+    Global Constants:
+    CONFIG_FILE (str): Name of the configuration file ('config.json').
+    LOCAL_PATH (Path): Path to the directory containing this script.
+    CONFIG_PATH (Path): Full path to the config file.
+
+    Note:
+    - This function assumes the existence of an `ensure_config_readonly()` function to set read-only permissions.
+    - The function uses a 'try-except-finally' block to ensure permissions are restored even if an error occurs.
+    - Logging is used to record the success or failure of the update process.
     """
     CONFIG_FILE = 'config.json'
     LOCAL_PATH = Path(__file__).resolve().parent
@@ -192,11 +350,6 @@ if config:
     global today_short_date
     today_short_date = datetime.now().strftime("%m%d%Y")
 
-    logging.basicConfig(
-        level = logging.INFO,  # Set the logging level (INFO, WARNING, ERROR, etc.)
-        filename = LOGGING_FILE,
-        format = '%(asctime)s - %(levelname)s - %(message)s'
-    )
 else:
     logging.error("Failed to load configuration. Exiting.")
     sys.exit(1)

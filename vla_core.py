@@ -1,14 +1,15 @@
 # vla_core.py
-
 import re
 import os
 import cv2
 import sys
 import json
+import uuid
 import cursor
 import shutil
 import logging
 import hashlib
+import argparse
 import textwrap
 import requests
 import numpy as np
@@ -29,13 +30,44 @@ from vla_config import *
 
 
 class CustomLogger(ProgressBarLogger):
+    """
+    A custom logger class for displaying progress during video creation.
+
+    This class extends ProgressBarLogger to provide custom formatting for progress updates.
+    It displays progress as percentages for bar-type updates and as key-value pairs for other updates.
+
+    Methods:
+    - bars_callback: Handles updates for progress bars, displaying the progress as a percentage.
+    - callback: Handles general updates, displaying them as key-value pairs.
+
+    Both methods use carriage return to overwrite the previous line, creating a dynamic update effect.
+    """
     def bars_callback(self, bar, attr, value, old_value=None):
+        """
+        Callback method for updating progress bars.
+
+        Args:
+        bar (str): The name of the progress bar being updated.
+        attr (str): The attribute being updated (e.g., 'frame').
+        value (int): The current value of the attribute.
+        old_value (int, optional): The previous value of the attribute. Defaults to None.
+
+        Displays the progress as a percentage, formatted with the bar name.
+        """
         percentage = (value / self.bars[bar]['total']) * 100
         print(f"[i]\t{bar.capitalize()}: {percentage:.2f}%{" " * 100}", end="\r")
 
     def callback(self, **changes):
+        """
+        Callback method for general updates.
+
+        Args:
+        **changes (dict): Keyword arguments representing the changes to be logged.
+
+        Displays each change as a key-value pair.
+        """
         for (name, value) in changes.items():
-            print(f"[i]\t{name}: {value}{" " * 20}", end="\r")
+            print(f"[i]\t{name}: {value}{" " * 100}", end="\r")
 
 class ImageDownloader:
     """
@@ -47,7 +79,6 @@ class ImageDownloader:
 
     Attributes:
         out_path (Path): The directory where images will be saved.
-        hash_collisions_path (Path): The directory for storing hash collisions.
         session (requests.Session): The session object used for making HTTP requests.
         prev_image_filename (str): The filename of the previously downloaded image.
         prev_image_size (int): The size of the previously downloaded image.
@@ -56,12 +87,20 @@ class ImageDownloader:
 
     def __init__(self, session, out_path):
         self.out_path = Path(out_path)
-        self.hash_collisions_path = self.out_path / "hash_collisions"  # Directory for hash collisions
         self.session = session
-        self.prev_image_filename = None
+        self.prev_image_filename = self.get_last_image_filename()
         self.prev_image_size = None
-        self.prev_image_hash = None
-        # self.hash_collisions_path.mkdir(exist_ok=True)  # Ensure the directory exists
+        self.prev_image_hash = self.get_last_image_hash()
+
+    def get_last_image_filename(self):
+        image_files = sorted(self.out_path.glob('vla.*.jpg'))
+        return image_files[-1].name if image_files else None
+
+    def get_last_image_hash(self):
+        if self.prev_image_filename:
+            with open(self.out_path / self.prev_image_filename, 'rb') as f:
+                return self.compute_hash(f.read())
+        return None
 
     def compute_hash(self, image_content):
         """
@@ -126,7 +165,53 @@ class ImageDownloader:
 
         # This line should never be reached, but it's here for completeness
         return None, None
-    
+
+def setup_logging(config):
+    """
+    Set up logging based on the provided configuration.
+
+    Args:
+        config (dict): The configuration dictionary containing logging settings.
+
+    Returns:
+        bool: True if logging setup was successful, False otherwise.
+    """
+    try:
+        LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
+        LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
+        LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
+        # print(f"Attempting to set up logging to: {LOGGING_FILE}")
+
+        os.makedirs(LOGGING_FOLDER, exist_ok=True)
+        
+        # Set up logging
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        
+        # Remove any existing handlers to avoid duplicate logging
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+        
+        # Create a file handler
+        file_handler = logging.FileHandler(LOGGING_FILE, mode='a')
+        file_handler.setLevel(logging.INFO)
+        
+        # Create a formatting for the logs
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # Add the handler to the logger
+        logger.addHandler(file_handler)
+
+        logging.info("Logging initialized successfully")
+        # print("Logging initialized successfully")
+        
+        return True
+
+    except Exception as e:
+        print(f"Error setting up logging: {str(e)}")
+        return False
+
 def clear():
     """
     Clears the terminal screen.
@@ -135,6 +220,146 @@ def clear():
     based on the operating system ('cls' for Windows, 'clear' for others).
     """
     os.system("cls" if os.name == "nt" else "clear")
+
+def get_or_create_run_id():
+    """
+    Get an existing run ID for today or create a new one.
+
+    This function manages run IDs for organizing daily runs of the application. It performs the following steps:
+    1. Generates today's date in 'YYYYMMDD' format.
+    2. Searches for existing run folders for today.
+    3. Based on the number of existing folders:
+       - If no folders exist: Creates a new run ID combining today's date and a unique identifier.
+       - If one folder exists: Returns the existing run ID.
+       - If multiple folders exist: Prompts the user to select one of the existing folders.
+
+    The run ID is used to organize outputs (images, videos, etc.) for each execution of the application.
+
+    Returns:
+    str: A run ID string. Format is either 'YYYYMMDD_XXXXXXXX' for new runs 
+         (where X is a portion of a UUID), or the basename of an existing folder.
+
+    Note:
+    - The function relies on helper functions 'find_today_run_folders()' and 'prompt_user_for_folder_selection()',
+      which should be defined elsewhere in the codebase.
+    - UUID is used to ensure uniqueness when creating a new run ID.
+    """
+    today = datetime.now().strftime("%Y%m%d")
+    run_folders = find_today_run_folders()
+    
+    if not run_folders:
+        # No existing folders, create a new one
+        run_id = f"{today}_{str(uuid.uuid4())[:8]}"
+        return run_id
+    elif len(run_folders) == 1:
+        # One folder exists, use it
+        return os.path.basename(run_folders[0])
+    else:
+        # Multiple folders exist, prompt user to choose
+        selected_folder = prompt_user_for_folder_selection(run_folders)
+        return os.path.basename(selected_folder)
+
+def find_today_run_folders():
+    """
+    Find all run folders for today in the images directory.
+
+    This function performs the following steps:
+    1. Gets today's date in 'YYYYMMDD' format.
+    2. Searches the IMAGES_FOLDER for subdirectories that start with today's date.
+
+    The function is used to identify existing run folders for the current day,
+    which is useful for managing multiple runs on the same day.
+
+    Returns:
+    list: A list of full paths to folders in IMAGES_FOLDER that start with today's date.
+          Each path is a string representing a run folder for today.
+          The list will be empty if no matching folders are found.
+
+    Note:
+    - This function assumes that IMAGES_FOLDER is a global variable or constant 
+      defined elsewhere in the code, representing the path to the main images directory.
+    - The function only considers immediate subdirectories of IMAGES_FOLDER, not nested directories.
+    """
+    today = datetime.now().strftime("%Y%m%d")
+    return [os.path.join(IMAGES_FOLDER, d) for d in os.listdir(IMAGES_FOLDER) if d.startswith(today)]
+
+def prompt_user_for_folder_selection(folders):
+    """
+    Prompt the user to select a folder from a list of existing folders.
+
+    This function is used when multiple run folders for the current day are detected.
+    It presents the user with a numbered list of folders, including details about each folder,
+    and asks the user to select one.
+
+    The function performs the following steps:
+    1. Prints a message informing the user of multiple folders.
+    2. For each folder, displays:
+       - A number for selection
+       - The folder name
+       - The creation time of the folder
+       - The number of JPG images in the folder
+    3. Prompts the user to enter the number of their chosen folder.
+    4. Validates the user's input and returns the selected folder path.
+
+    Args:
+    folders (list): A list of full paths to folders to choose from.
+
+    Returns:
+    str: The full path of the folder selected by the user.
+
+    Raises:
+    ValueError: If the user enters a non-numeric value.
+
+    Note:
+    - The function will continue to prompt the user until a valid selection is made.
+    - Only immediate JPG files in each folder are counted; nested directories are not considered.
+    """
+    print("Multiple image folders detected for today. Please select which one to use:")
+    for i, folder in enumerate(folders, 1):
+        image_count = len([f for f in os.listdir(folder) if f.endswith('.jpg')])
+        folder_name = os.path.basename(folder)
+        creation_time = datetime.fromtimestamp(os.path.getctime(folder)).strftime("%H:%M:%S")
+        print(f"{i}. {folder_name} (Created at {creation_time}, Contains {image_count} images)")
+    
+    while True:
+        try:
+            choice = int(input("Enter the number of the folder you want to use: "))
+            if 1 <= choice <= len(folders):
+                return folders[choice - 1]
+            else:
+                print("Invalid choice. Please try again.")
+        except ValueError:
+            print("Please enter a valid number.")
+
+def remove_valid_images_json(folder):
+    """
+    Remove the 'valid_images.json' file from the specified folder if it exists.
+
+    This function is typically used to clean up previous run data before starting a new image capture session.
+    It performs the following steps:
+    1. Constructs the full path to the 'valid_images.json' file in the given folder.
+    2. Checks if the file exists.
+    3. If the file exists, it is removed.
+    4. Logs an info message about the removal.
+
+    Args:
+    folder (str): The path to the folder from which to remove the 'valid_images.json' file.
+
+    Returns:
+    None
+
+    Side Effects:
+    - Removes the 'valid_images.json' file from the specified folder if it exists.
+    - Logs an info message using the logging module.
+
+    Note:
+    - This function assumes that it has write permissions in the specified folder.
+    - It silently succeeds if the file doesn't exist, without raising any errors.
+    """
+    valid_images_path = os.path.join(folder, "valid_images.json")
+    if os.path.exists(valid_images_path):
+        os.remove(valid_images_path)
+        logging.info(f"Removed valid_images.json from {folder}")
 
 def log_jamming(log_message):
     """
@@ -179,14 +404,25 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
         ntfy (bool, optional): Whether to send a notification. Defaults to False.
         print_me (bool, optional): Whether to print the message. Defaults to True.
     """
+    MESSAGE_PREFIXES = {
+        "info": "[i]\t",
+        "warning": "[!?]\t",
+        "error": "[!]\t",
+        "download" : "[>]\t",
+        "none" : ""
+    }
     if print_me:
-        print(message)
+        prefix = MESSAGE_PREFIXES.get(log_level, MESSAGE_PREFIXES.get("info"))
+        formatted_message = f"{prefix}{message}"
+        print(formatted_message)
+
     log_func = getattr(logging, log_level, logging.info)
     log_func(message)
+
     if ntfy:
         send_to_ntfy(NTFY_TOPIC, message)
 
-def activity(char, images_folder, image_size, time_stamp=""):
+def activity(char, run_images_folder, image_size, time_stamp=""):
     """
     Displays the current status of the image downloading activity in the terminal.
 
@@ -197,9 +433,9 @@ def activity(char, images_folder, image_size, time_stamp=""):
         time_stamp (str, optional): A timestamp for the activity. Defaults to "".
     """
     clear()
-    files = os.listdir(images_folder)
+    files = os.listdir(run_images_folder)
     jpg_count = sum(1 for file in files if file.lower().endswith('.jpg'))
-    print(f"[i]\tIteration: {char}\n[i]\tImage Count: {jpg_count}\n[i]\tImage Size: {image_size}\n", end="\r", flush=True)
+    print(f"Iteration: {char}\nImage Count: {jpg_count}\nImage Size: {image_size}\n", end="\r", flush=True)
 
 def create_session(USER_AGENTS, proxies, webpage):
     """
@@ -292,12 +528,10 @@ def create_images_dict(images_folder) -> list:
         try:
             with open(valid_images_path, 'r') as file:
                 valid_files = json.load(file)
-                message = f"[i]\tExisting Validation Used"
-                message_processor(message, 'info', print_me=True)
+                message_processor("Existing Validation Used", print_me=True)
                 return valid_files
         except json.JSONDecodeError:
-            message = f"[!]\tError decoding JSON, possibly corrupted file."
-            message_processor(message, 'error')
+            message_processor("Error decoding JSON, possibly corrupted file.", "error")
     
     # images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
     images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
@@ -392,25 +626,25 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
             with open(full_audio_path, 'wb') as f:
                 f.write(r.content)
             
-            message_processor(f"[>]\tDownloaded: {audio_name}")
+            message_processor(f"Downloaded: {audio_name}", "download")
             
             # Test the audio file
             try:
                 with AudioFileClip(full_audio_path) as audio_clip:
                     # If we can read the duration, the file is likely usable
                     actual_duration = audio_clip.duration
-                message_processor(f"[>]\tAudio file verified. Duration: {actual_duration:.2f} seconds")
+                message_processor(f"Audio file verified. Duration: {actual_duration:.2f} seconds")
                 return full_audio_path, actual_duration * 1000  # Return duration in milliseconds
             except Exception as e:
-                message_processor(f"[!]\tError verifying audio file: {e}", "error")
+                message_processor(f"Error verifying audio file: {e}", "error")
                 os.remove(full_audio_path)  # Remove the unusable file
-                message_processor(f"[>]\tRemoved unusable file: {audio_name}")
+                message_processor(f"Removed unusable file: {audio_name}")
                 continue  # Try downloading again
         
         except requests.RequestException as e:
-            message_processor(f"[!]\tAn error occurred during download:\n[!]\t{e}", "error")
+            message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
     
-    message_processor(f"[!]\tFailed to download a usable audio file after {max_attempts} attempts.", "error")
+    message_processor(f"Failed to download a usable audio file after {max_attempts} attempts.", "error")
     return None, None
 
 def audio_download(video_duration, AUDIO_FOLDER) -> list:
@@ -430,7 +664,7 @@ def audio_download(video_duration, AUDIO_FOLDER) -> list:
     attempts = 0
     max_attempts = 10
     
-    message_processor(f"[i]\tAttempting to download audio for {video_duration/1000:.2f} seconds of video", print_me=False)
+    message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video", print_me=False)
 
     while total_duration < video_duration / 1000 and attempts < max_attempts:
         song_path, song_duration_ms = single_song_download(AUDIO_FOLDER)
@@ -444,10 +678,10 @@ def audio_download(video_duration, AUDIO_FOLDER) -> list:
         attempts += 1
 
     if total_duration < video_duration / 1000:
-        message_processor(f"[!]\tFailed to download sufficient audio length. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s")
+        message_processor(f"Failed to download sufficient audio length. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s")
         return None
     
-    message_processor(f"[i]\tSuccessfully downloaded {len(songs)} songs, total duration: {total_duration:.2f}s")
+    message_processor(f"Successfully downloaded {len(songs)} songs, total duration: {total_duration:.2f}s")
     return songs
 
 def concatenate_songs(songs, crossfade_seconds=3):
@@ -462,7 +696,7 @@ def concatenate_songs(songs, crossfade_seconds=3):
         AudioFileClip or None: The concatenated audio clip.
     """
     if not songs:
-        message_processor("[!]\tNo songs provided for concatenation.", log_level="error")
+        message_processor("No songs provided for concatenation.", log_level="error")
         return None
     
     clips = []
@@ -473,11 +707,11 @@ def concatenate_songs(songs, crossfade_seconds=3):
                 clip = AudioFileClip(song_path)
                 clips.append(clip)
             except Exception as e:
-                message_processor(f"[!]\tError loading audio from {song_path}:\n[!]\t{e}\n[!]\tFix This!", log_level="error", ntfy=True)
+                message_processor(f"Error loading audio from {song_path}: {e}", "error", ntfy=True)
                 sys.exit(1)
                 
         else:
-            message_processor("[!]\tInvalid song data format.", log_level="error", ntfy=True)
+            message_processor("Invalid song data format.", "error", ntfy=True)
 
     if clips:
         # Manually handle crossfade
@@ -507,10 +741,10 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     """
     logger = CustomLogger()
     
-    message_processor("[i]\tCreating Time Lapse...")
+    message_processor("Creating Time Lapse")
     video_clip = ImageSequenceClip(valid_files, fps=fps)
     
-    print("[i]\tProcessing Audio...")
+    message_processor("Processing Audio")
     if isinstance(audio_input, str):
         audio_clip = AudioFileClip(audio_input).subclip(0, video_clip.duration)
     elif hasattr(audio_input, 'audio_fadein'):
@@ -518,43 +752,42 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     else:
         raise ValueError("Invalid audio input: must be a file path or an AudioClip")
     
-    print("[i]\tApplying Audio Effects...")
+    message_processor("Applying Audio Effects")
     audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
     video_clip = video_clip.set_audio(audio_clip)
     video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
 
-    print("[i]\tCreating End Frame...")
+    message_processor("Creating End Frame")
     black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
     
-    print("[i]\tConcatenating Video Clips...")
+    message_processor("Concatenating Video Clips")
     final_clip = concatenate_videoclips([video_clip, black_frame_clip])
     
-    print("[i]\tWriting Video File...")
+    message_processor("Writing Video File")
     final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
 
-    print("[i]\tClosing Clips...")
+    message_processor("Closing Clips")
     video_clip.close()
     audio_clip.close()
     final_clip.close()
 
-    message_processor(f"[i]\tTime Lapse Saved: {video_path}")
+    # message_processor(f"Time Lapse Saved: {video_path}")
 
-def cleanup(NTFY_TOPIC, path):
+def cleanup(path):
     """
     Removes a directory along with all its contents.
 
     Args:
         directory_path (str or Path): The path to the directory to remove.
     """
-    directory_path = Path(path)  # Ensure it's a Path object for consistency
     try:
-        if directory_path.is_dir():  # Check if it's a directory
-            shutil.rmtree(directory_path)
-            message_processor(f"[i]\tAll contents of {directory_path} have been removed.")
+        if os.path.exists(path):
+            shutil.rmtree(path)
+            message_processor(f"All contents of {path} have been removed.")
         else:
-            message_processor(f"[i]\tNo directory found at {directory_path}. Nothing to remove.")
+            message_processor(f"No directory found at {path}. Nothing to remove.")
     except Exception as e:
-        message_processor(f"[!]\tFailed to remove {directory_path}: {e}")
+        message_processor(f"Failed to remove {path}: {e}", "error")
 
 def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
     """
@@ -568,7 +801,7 @@ def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
         bool: True if the message was sent successfully, False otherwise.
     """
     if not NTFY_TOPIC:
-        logging.warning("No NTFY topic provided. Skipping notification.")
+        message_processor("No NTFY topic provided. Skipping notification.", "warning")
         return False
 
     try:
@@ -578,10 +811,10 @@ def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         response = requests.post(NTFY_TOPIC, headers=headers, data=message)
         response.raise_for_status()
-        message_processor(f"[i]\tNotification sent to {NTFY_TOPIC}")
+        message_processor(f"Notification sent to {NTFY_TOPIC}")
         return True
     except requests.RequestException as e:
-        message_processor(f"Failed to send notification: {e}", "eeorr")
+        message_processor(f"Failed to send notification: {e}", "error")
         return False
 
 def sun_schedule(SUN_URL):
