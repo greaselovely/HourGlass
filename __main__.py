@@ -154,7 +154,7 @@ def main():
                 sleep_timer = int(time_diff)
                 message_processor(f"Sleep:\t:{sleep_timer  // 60}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}", "none", ntfy=True, print_me=True)
                 sleep(sleep_timer)
-                message_processor(f"Starting: {now.time()}.", ntfy=True, print_me=True)
+                message_processor(f"Starting: {datetime.now().strftime("%H:%M")}.", ntfy=True, print_me=True)
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
