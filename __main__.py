@@ -122,7 +122,7 @@ def main():
     for folder in [run_images_folder, run_video_folder, run_audio_folder]:
         os.makedirs(folder, exist_ok=True)
     
-    video_filename = f"VLA.{datetime.now().strftime('%Y%m%d')}.mp4"
+    video_filename = f"VLA.{datetime.now().strftime('%m%d%Y')}.mp4"
     video_path = os.path.join(run_video_folder, video_filename)
 
     if args.movie:
@@ -136,7 +136,7 @@ def main():
             clear()
             cursor.hide()
 
-            video_filename = f"VLA_{datetime.now().strftime('%Y%m%d')}.mp4"
+            video_filename = f"VLA_{datetime.now().strftime('%m%d%Y')}.mp4"
             video_path = os.path.join(run_video_folder, video_filename)
                       
             soup = sun_schedule(SUN_URL)
