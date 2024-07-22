@@ -741,37 +741,61 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     """
     logger = CustomLogger()
     
-    message_processor("Creating Time Lapse")
-    video_clip = ImageSequenceClip(valid_files, fps=fps)
-    
-    message_processor("Processing Audio")
-    if isinstance(audio_input, str):
-        audio_clip = AudioFileClip(audio_input).subclip(0, video_clip.duration)
-    elif hasattr(audio_input, 'audio_fadein'):
-        audio_clip = audio_input.subclip(0, video_clip.duration)
-    else:
-        raise ValueError("Invalid audio input: must be a file path or an AudioClip")
-    
-    message_processor("Applying Audio Effects")
-    audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
-    video_clip = video_clip.set_audio(audio_clip)
-    video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
+    try:
+        message_processor("Creating Time Lapse")
+        logging.info(f"Creating time-lapse with {len(valid_files)} images at {fps} fps")
+        video_clip = ImageSequenceClip(valid_files, fps=fps)
+        
+        message_processor("Processing Audio")
+        if isinstance(audio_input, str):
+            audio_clip = AudioFileClip(audio_input)
+        elif hasattr(audio_input, 'audio_fadein'):
+            audio_clip = audio_input
+        else:
+            raise ValueError("Invalid audio input: must be a file path or an AudioClip")
+        
+        logging.info(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
+        
+        if audio_clip.duration < video_clip.duration:
+            logging.warning("Audio is shorter than video. Looping audio.")
+            audio_clip = audio_clip.loop(duration=video_clip.duration)
+        else:
+            audio_clip = audio_clip.subclip(0, video_clip.duration)
+        
+        message_processor("Applying Audio Effects")
+        audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
+        video_clip = video_clip.set_audio(audio_clip)
+        video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
 
-    message_processor("Creating End Frame")
-    black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3))], fps=fps).set_duration(end_black_seconds)
-    
-    message_processor("Concatenating Video Clips")
-    final_clip = concatenate_videoclips([video_clip, black_frame_clip])
-    
-    message_processor("Writing Video File")
-    final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
+        message_processor("Creating End Frame")
+        black_frame_clip = ImageSequenceClip([np.zeros((video_clip.h, video_clip.w, 3), dtype=np.uint8)], fps=fps).set_duration(end_black_seconds)
+        
+        message_processor("Concatenating Video Clips")
+        final_clip = concatenate_videoclips([video_clip, black_frame_clip])
+        
+        message_processor("Writing Video File")
+        logging.info(f"Writing video file to {video_path}")
+        final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
 
-    message_processor("Closing Clips")
-    video_clip.close()
-    audio_clip.close()
-    final_clip.close()
+    except Exception as e:
+        error_message = f"Error in create_time_lapse: {str(e)}"
+        logging.error(error_message)
+        message_processor(error_message, "error", ntfy=True)
+        raise  # Re-raise the exception to be caught by the calling function
 
-    # message_processor(f"Time Lapse Saved: {video_path}")
+    finally:
+        message_processor("Closing Clips")
+        try:
+            if 'video_clip' in locals():
+                video_clip.close()
+            if 'audio_clip' in locals():
+                audio_clip.close()
+            if 'final_clip' in locals():
+                final_clip.close()
+        except Exception as close_error:
+            logging.error(f"Error while closing clips: {str(close_error)}")
+
+    logging.info(f"Time Lapse Saved: {video_path}")
 
 def cleanup(path):
     """

@@ -4,7 +4,7 @@ from vla_config import *
 from vla_core import *
 from vla_upload import *
 
-def main_sequence(run_images_folder, run_video_folder, run_audio_folder):
+def main_sequence(run_images_folder, video_path, run_audio_folder):
     """
     Execute the main sequence of operations for creating a time-lapse video.
 
@@ -17,7 +17,7 @@ def main_sequence(run_images_folder, run_video_folder, run_audio_folder):
 
     Args:
     run_images_folder (str): Path to the folder containing images for this run.
-    run_video_folder (str): Path to the folder where the final video for this run will be saved.
+    video_path (str): Path to the folder where the final video for this run will be saved.
     run_audio_folder (str): Path to the folder for storing temporary audio files for this run.
 
     Returns:
@@ -27,51 +27,44 @@ def main_sequence(run_images_folder, run_video_folder, run_audio_folder):
     global config, rename
     fps = 10
     
-    message_processor("Validating Images")
-    valid_files = create_images_dict(run_images_folder)
+    try:
+        message_processor("Validating Images")
+        valid_files = create_images_dict(run_images_folder)
 
-    if not valid_files:
-        message_processor("No valid images found. Aborting video creation.", "error", ntfy=False)
-        return
-    
-    duration_threshold = calculate_video_duration(len(valid_files), fps)
-    message_processor(f"Video Duration: {duration_threshold}", print_me=False)
-    
-    full_audio_path = audio_download(duration_threshold, run_audio_folder)
-    if len(full_audio_path) >= 2:
-        final_song = concatenate_songs(full_audio_path)
-    else:
-        final_song = full_audio_path[0][0]
-    
-    create_time_lapse(valid_files, run_video_folder, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
+        if not valid_files:
+            message_processor("No valid images found. Aborting video creation.", "error", ntfy=True)
+            return
+        
+        duration_threshold = calculate_video_duration(len(valid_files), fps)
+        message_processor(f"Video Duration: {duration_threshold}", print_me=False)
+        
+        full_audio_path = audio_download(duration_threshold, run_audio_folder)
+        if len(full_audio_path) >= 2:
+            final_song = concatenate_songs(full_audio_path)
+        else:
+            final_song = full_audio_path[0][0]
+              
+        create_time_lapse(valid_files, video_path, fps, final_song, crossfade_seconds=3, end_black_seconds=3)
 
-    if os.path.exists(run_video_folder):
-        message_processor(f"{os.path.basename(run_video_folder)} saved", ntfy=True, print_me=False)
-        
-        # # Upload to YouTube
-        # date_obj = datetime.now()
-        # formatted_date = date_obj.strftime("%m/%d/%Y")
-        # video_title = f"VLA {formatted_date}"
-        # video_description = f"@NRAO Very Large Array Time Lapse for {formatted_date}"
-        
-        # video_id, youtube_client = upload_to_youtube(video_path, video_title, video_description)
-        
-        # if video_id and youtube_client:
-        #     message_processor(f"Video uploaded to YouTube ID: {video_id}", ntfy=True)
-            
-        #     # Now, add the video to the playlist
-        #     success, message = add_video_to_playlist(youtube_client, video_id, "VLA")
-        #     if success:
-        #         message_processor(message, ntfy=True)
-        #     else:
-        #         message_processor(message, ntfy=True)
-        # else:
-        #     message_processor("Failed to upload video to YouTube", "error", ntfy=True)
-        #     message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
+        if os.path.exists(video_path):
+            message_processor(f"{video_path.split('/')[-1]} saved", ntfy=True, print_me=False)
+        else:
+            message_processor(f"Failed to create video: {video_path.split('/')[-1]}", "error", ntfy=True)
 
-    # Cleanup
-    cleanup(run_images_folder)
-    cleanup(run_audio_folder)
+    except Exception as e:
+        error_message = f"Error in main_sequence: {str(e)}"
+        logging.error(error_message)
+        message_processor(error_message, "error", ntfy=True)
+    
+    finally:
+        # Ensure cleanup happens even if there's an error
+        try:
+            cleanup(run_images_folder)
+            cleanup(run_audio_folder)
+        except Exception as cleanup_error:
+            cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
+            logging.error(cleanup_error_message)
+            message_processor(cleanup_error_message, "error", ntfy=True)
 
 def main():
     """
@@ -111,20 +104,20 @@ def main():
     parser.add_argument("-m", "--movie", action="store_true", help="Generate movie only without capturing new images")
     args = parser.parse_args()
 
+
     run_id = get_or_create_run_id()
     
     # Create subfolders for this run
     run_images_folder = os.path.join(IMAGES_FOLDER, run_id)
-    # run_video_folder = os.path.join(VIDEO_FOLDER, run_id)
-    run_video_folder = VIDEO_FOLDER
+
+    video_filename = f"VLA.{datetime.now().strftime('%m%d%Y')}.mp4"
+    video_path = os.path.join(VIDEO_FOLDER, video_filename)
+    
     run_audio_folder = os.path.join(AUDIO_FOLDER, run_id)
 
-    for folder in [run_images_folder, run_video_folder, run_audio_folder]:
+    for folder in [run_images_folder, VIDEO_FOLDER, run_audio_folder]:
         os.makedirs(folder, exist_ok=True)
     
-    video_filename = f"VLA.{datetime.now().strftime('%m%d%Y')}.mp4"
-    video_path = os.path.join(run_video_folder, video_filename)
-
     if args.movie:
         # Generate movie only
         main_sequence(run_images_folder, video_path, run_audio_folder)
@@ -135,9 +128,6 @@ def main():
         try:
             clear()
             cursor.hide()
-
-            video_filename = f"VLA_{datetime.now().strftime('%m%d%Y')}.mp4"
-            video_path = os.path.join(run_video_folder, video_filename)
                       
             soup = sun_schedule(SUN_URL)
 
@@ -180,7 +170,7 @@ def main():
                     i += 1
                     now = datetime.now()
                     if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
-                        main_sequence(run_images_folder, run_video_folder, run_audio_folder)
+                        main_sequence(run_images_folder, video_path, run_audio_folder)
                         break  # Exit the loop after generating the video
                 except requests.exceptions.RequestException as e:
                     log_message = f"Session timeout or error detected, re-establishing session: {e}"
@@ -193,10 +183,10 @@ def main():
 
         except KeyboardInterrupt:
             try:
-                main_sequence(run_images_folder, run_video_folder, run_audio_folder)
+                main_sequence(run_images_folder, video_path, run_audio_folder)
             except Exception as e:
                 message_processor(f"Error processing images to video: {e}", "error")
-                main_sequence(run_images_folder, run_video_folder, run_audio_folder)
+                main_sequence(run_images_folder, video_path, run_audio_folder)
             finally:
                 cursor.show()
 

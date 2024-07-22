@@ -5,6 +5,7 @@ from pathlib import Path
 import logging
 import argparse
 from PIL import Image, ImageDraw, ImageFont
+import uuid
 
 def setup_logging():
     # Set up the log directory in the user's home directory
@@ -74,12 +75,16 @@ def create_base_image(path):
     img.save(path)
     logging.info(f"Created base image: {path}")
     logging.info(f"Text width: {text_width}/{img_width} pixels, Font size: {font_size}")
+def get_or_create_run_id():
+    today = datetime.now().strftime("%Y%m%d")
+    run_id = f"{today}_{str(uuid.uuid4())[:8]}"
+    return run_id
 
-def generate_images(fps, duration, interval, source_filename):
+def generate_images(fps, duration, interval, source_filename, run_id):
     # Set the directories under the user's home directory
     home_directory = Path.home()
-    images_folder = home_directory / 'VLA' / 'images'
-    source_image = images_folder / source_filename
+    images_folder = home_directory / 'VLA' / 'images' / run_id
+    source_image = home_directory / 'VLA' / 'images' / source_filename
 
     # Ensure the images folder exists
     images_folder.mkdir(parents=True, exist_ok=True)
@@ -102,7 +107,7 @@ def generate_images(fps, duration, interval, source_filename):
             filename = f'vla.{today_short_date}.{today_short_time}.jpg'
             destination_path = images_folder / filename
             copyfile(source_image, destination_path)
-            logging.info(f"Created image: {filename}")
+            logging.info(f"Created image: {filename} in run_id: {run_id}")
             current_time += timedelta(seconds=interval)
         except Exception as e:
             logging.error(f"Error creating image {i}: {str(e)}")
@@ -111,9 +116,12 @@ def main():
     setup_logging()
     args = parse_arguments()
     
-    logging.info("Starting image generation process")
-    generate_images(args.fps, args.duration, args.interval, args.source)
-    logging.info("Image generation process completed")
+    run_id = get_or_create_run_id()
+    logging.info(f"Starting image generation process for run_id: {run_id}")
+    generate_images(args.fps, args.duration, args.interval, args.source, run_id)
+    logging.info(f"Image generation process completed for run_id: {run_id}")
 
 if __name__ == "__main__":
     main()
+
+
