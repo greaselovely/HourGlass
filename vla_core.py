@@ -20,11 +20,14 @@ from pathlib import Path
 from random import choice
 from wurlitzer import pipes
 from bs4 import BeautifulSoup
+from selenium import webdriver
 from urllib.parse import urljoin
 from proglog import ProgressBarLogger
 from http.client import IncompleteRead
 from datetime import datetime, timedelta
+from selenium.webdriver.chrome.options import Options
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
+
 
 from vla_config import *
 
@@ -113,6 +116,14 @@ class ImageDownloader:
             str: The hexadecimal representation of the SHA-256 hash.
         """
         return hashlib.sha256(image_content).hexdigest()
+
+    def load_web_page(self, WEBPAGE):
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run in headless mode (optional)
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(WEBPAGE)
+        message_processor(f"Page title: {driver.title}", print_me=False)
+        driver.quit()
 
     def download_image(self, session, IMAGE_URL, retry_delay=5):
         """
@@ -331,7 +342,7 @@ def prompt_user_for_folder_selection(folders):
         except ValueError:
             print("Please enter a valid number.")
 
-def remove_valid_images_json(folder):
+def remove_valid_images_json(run_valid_images_file):
     """
     Remove the 'valid_images.json' file from the specified folder if it exists.
 
@@ -356,10 +367,55 @@ def remove_valid_images_json(folder):
     - This function assumes that it has write permissions in the specified folder.
     - It silently succeeds if the file doesn't exist, without raising any errors.
     """
-    valid_images_path = os.path.join(folder, "valid_images.json")
-    if os.path.exists(valid_images_path):
-        os.remove(valid_images_path)
-        logging.info(f"Removed valid_images.json from {folder}")
+    if os.path.exists(run_valid_images_file):
+        os.remove(run_valid_images_file)
+        message_processor(f"Removed {run_valid_images_file}")
+
+def process_image_logs(LOGGING_FILE, number_of_valid_files):
+    """
+    Process image logs for the current day and generate a summary of image download attempts.
+
+    This function reads a log file, filters entries for the current date, and counts
+    the number of successful and failed image downloads. It also reads a JSON file
+    containing valid images and provides a count of those.
+
+    Parameters:
+    LOGGING_FILE (str): Path to the log file containing image download attempts.
+    run_valid_images_file (str): Path to the JSON file containing valid images.
+
+    Returns:
+    str: A formatted summary string containing:
+        - Total image download attempts
+        - Number of failed attempts (Same Hash)
+        - Number of successful attempts (New Hash)
+        - Number of valid images
+
+    The function performs the following steps:
+    1. Filters log entries for the current date.
+    2. Counts occurrences of "Same Hash" (failed) and "New Hash" (successful) in today's logs.
+    3. Reads the valid images JSON file and counts the number of entries.
+    4. Calculates the total number of download attempts.
+    5. Generates and returns a formatted summary string.
+
+    Note: This function assumes that the log file contains date information and
+    that "Same Hash" and "New Hash" are indicators for failed and successful
+    downloads respectively.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    with open(LOGGING_FILE, "r") as log_file:
+        today_lines = [line for line in log_file if today in line]
+    today_log = ''.join(today_lines)
+    failed_saved_images = len(re.findall(r"Same Hash", today_log))
+    successful_saved_images = len(re.findall(r"New Hash", today_log))
+    total_attempts = failed_saved_images + successful_saved_images
+    summary = (
+        f"Total image download attempts: {total_attempts}\n"
+        f"\tFailed: {failed_saved_images}\n"
+        f"\tSuccessful: {successful_saved_images}\n"
+        f"\tValid images: {number_of_valid_files}\n"
+    )
+    return summary
+
 
 def log_jamming(log_message):
     """
@@ -508,7 +564,7 @@ def make_request(session):
             return None
     return None
 
-def create_images_dict(images_folder) -> list:
+def validate_images(run_images_folder, run_images_valid_file) -> tuple:
     """
     Creates a dictionary of valid image file paths from the specified folder.
 
@@ -517,43 +573,45 @@ def create_images_dict(images_folder) -> list:
 
     Args:
         images_folder (str): The directory where the images are stored.
+        run_images_valid_file (str): The path to the JSON file storing valid image paths.
 
     Returns:
-        list: A list of valid image file paths.
+        tuple: A tuple containing a list of valid image file paths and the count of valid images.
     """
-    valid_images_path = Path(images_folder) / "valid_images.json"
-    
-    # Check if the valid_images.json file exists and is not empty
-    if valid_images_path.exists() and valid_images_path.stat().st_size > 0:
+       
+    run_images_valid_file = Path(run_images_valid_file)
+    run_images_folder = Path(run_images_folder)
+
+    if run_images_valid_file.exists() and run_images_valid_file.stat().st_size > 0:
         try:
-            with open(valid_images_path, 'r') as file:
+            with open(run_images_valid_file, 'r') as file:
                 valid_files = json.load(file)
                 message_processor("Existing Validation Used", print_me=True)
-                return valid_files
+                return valid_files, len(valid_files)
         except json.JSONDecodeError:
             message_processor("Error decoding JSON, possibly corrupted file.", "error")
     
-    # images = sorted([os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(".jpg")])
-    images = sorted([img for img in os.listdir(images_folder) if img.endswith(".jpg")])
-    images_dict = {}
-    
-    for n, image in enumerate(images, 1):
-        print(f"[i]\t{n}", end='\r')
-        full_image = Path(images_folder) / image
-        with pipes() as (out, err):
-            img = cv2.imread(str(full_image))
-        err.seek(0)
-        error_message = err.read()
-        if error_message == "":
-            images_dict[str(full_image)] = error_message
+    else:
+        images = sorted([img for img in os.listdir(run_images_folder) if img.endswith(".jpg")])
+        images_dict = {}
+        
+        for n, image in enumerate(images, 1):
+            print(f"[i]\t{n}", end='\r')
+            full_image = Path(run_images_folder) / image
+            with pipes() as (out, err):
+                img = cv2.imread(str(full_image))
+            err.seek(0)
+            error_message = err.read()
+            if error_message == "":
+                images_dict[str(full_image)] = error_message
 
-    valid_files = list(images_dict.keys())
-    
-    # Save the valid image paths to a JSON file
-    with open(valid_images_path, 'w') as file:
-        json.dump(valid_files, file)
+        valid_files = list(images_dict.keys())
+        
+        # Save the valid image paths to a JSON file
+        with open(run_images_valid_file, 'w') as file:
+            json.dump(valid_files, file)
 
-    return valid_files
+        return valid_files, len(valid_files)
 
 def calculate_video_duration(num_images, fps) -> int:
     """
@@ -743,7 +801,7 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
     
     try:
         message_processor("Creating Time Lapse")
-        logging.info(f"Creating time-lapse with {len(valid_files)} images at {fps} fps")
+        message_processor(f"Creating time-lapse with {len(valid_files)} images at {fps} fps")
         video_clip = ImageSequenceClip(valid_files, fps=fps)
         
         message_processor("Processing Audio")
@@ -754,10 +812,10 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
         else:
             raise ValueError("Invalid audio input: must be a file path or an AudioClip")
         
-        logging.info(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
+        message_processor(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
         
         if audio_clip.duration < video_clip.duration:
-            logging.warning("Audio is shorter than video. Looping audio.")
+            message_processor("Audio is shorter than video. Looping audio.", "warning")
             audio_clip = audio_clip.loop(duration=video_clip.duration)
         else:
             audio_clip = audio_clip.subclip(0, video_clip.duration)
@@ -793,9 +851,9 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
             if 'final_clip' in locals():
                 final_clip.close()
         except Exception as close_error:
-            logging.error(f"Error while closing clips: {str(close_error)}")
+            message_processor(f"Error while closing clips: {str(close_error)}", "error")
 
-    logging.info(f"Time Lapse Saved: {video_path}")
+    message_processor(f"Time Lapse Saved: {video_path}", ntfy=False)
 
 def cleanup(path):
     """

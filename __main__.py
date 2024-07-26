@@ -4,7 +4,7 @@ from vla_config import *
 from vla_core import *
 from vla_upload import *
 
-def main_sequence(run_images_folder, video_path, run_audio_folder):
+def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
     """
     Execute the main sequence of operations for creating a time-lapse video.
 
@@ -29,7 +29,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder):
     
     try:
         message_processor("Validating Images")
-        valid_files = create_images_dict(run_images_folder)
+        valid_files, number_of_valid_files = validate_images(run_images_folder, run_valid_images_file)
 
         if not valid_files:
             message_processor("No valid images found. Aborting video creation.", "error", ntfy=True)
@@ -48,6 +48,15 @@ def main_sequence(run_images_folder, video_path, run_audio_folder):
 
         if os.path.exists(video_path):
             message_processor(f"{video_path.split('/')[-1]} saved", ntfy=True, print_me=False)
+            try:
+                message_processor("Stats for today:")
+                message_processor(process_image_logs(LOGGING_FILE, number_of_valid_files))
+                cleanup(run_images_folder)
+                cleanup(run_audio_folder)
+            except Exception as cleanup_error:
+                cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
+                logging.error(cleanup_error_message)
+                message_processor(cleanup_error_message, "error", ntfy=True)
         else:
             message_processor(f"Failed to create video: {video_path.split('/')[-1]}", "error", ntfy=True)
 
@@ -55,16 +64,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder):
         error_message = f"Error in main_sequence: {str(e)}"
         logging.error(error_message)
         message_processor(error_message, "error", ntfy=True)
-    
-    finally:
-        # Ensure cleanup happens even if there's an error
-        try:
-            cleanup(run_images_folder)
-            cleanup(run_audio_folder)
-        except Exception as cleanup_error:
-            cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
-            logging.error(cleanup_error_message)
-            message_processor(cleanup_error_message, "error", ntfy=True)
+  
+
 
 def main():
     """
@@ -104,11 +105,11 @@ def main():
     parser.add_argument("-m", "--movie", action="store_true", help="Generate movie only without capturing new images")
     args = parser.parse_args()
 
-
     run_id = get_or_create_run_id()
     
     # Create subfolders for this run
     run_images_folder = os.path.join(IMAGES_FOLDER, run_id)
+    run_valid_images_file = os.path.join(run_images_folder, VALID_IMAGES_FILE)
 
     video_filename = f"VLA.{datetime.now().strftime('%m%d%Y')}.mp4"
     video_path = os.path.join(VIDEO_FOLDER, video_filename)
@@ -119,11 +120,9 @@ def main():
         os.makedirs(folder, exist_ok=True)
     
     if args.movie:
-        # Generate movie only
-        main_sequence(run_images_folder, video_path, run_audio_folder)
+        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
     else:
-        # Normal operation (capture images and generate movie)
-        remove_valid_images_json(run_images_folder)
+        remove_valid_images_json(run_valid_images_file)
 
         try:
             clear()
@@ -144,7 +143,7 @@ def main():
                 sleep_timer = int(time_diff)
                 message_processor(f"Sleep:\t:{sleep_timer  // 60}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}", "none", ntfy=True, print_me=True)
                 sleep(sleep_timer)
-                message_processor(f"Starting: {datetime.now().strftime("%H:%M")}.", ntfy=True, print_me=True)
+                message_processor(f"Awake and Running", ntfy=True, print_me=True)
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
@@ -156,7 +155,8 @@ def main():
                     TARGET_HOUR = sunset_time.hour
                     TARGET_MINUTE = sunset_time.minute
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
-
+                    
+                    downloader.load_web_page(WEBPAGE) # selenium to mimic chrome browser
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
@@ -170,12 +170,12 @@ def main():
                     i += 1
                     now = datetime.now()
                     if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
-                        main_sequence(run_images_folder, video_path, run_audio_folder)
+                        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                         break  # Exit the loop after generating the video
                 except requests.exceptions.RequestException as e:
                     log_message = f"Session timeout or error detected, re-establishing session: {e}"
-                    logging.error(log_jamming(log_message))
-                    message_processor(f"Session timeout or error detected, re-establishing session...\n{e}\n", log_level="error")
+                    message_processor(log_jamming(log_message), "error")
+                    message_processor(f"Session timeout or error detected, re-establishing session...\n{e}\n", "error")
                     session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
                     downloader.download_image(session, IMAGE_URL)
                 finally:
@@ -183,10 +183,10 @@ def main():
 
         except KeyboardInterrupt:
             try:
-                main_sequence(run_images_folder, video_path, run_audio_folder)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
             except Exception as e:
                 message_processor(f"Error processing images to video: {e}", "error")
-                main_sequence(run_images_folder, video_path, run_audio_folder)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
             finally:
                 cursor.show()
 

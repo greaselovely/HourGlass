@@ -7,6 +7,8 @@ import stat
 from pathlib import Path
 from datetime import datetime
 
+CURRENT_VERSION = 1.4  # Increment this when making changes to the config structure
+
 def ensure_config_readonly(config_path):
     """
     Ensure the config.json file is read-only for the current user.
@@ -90,12 +92,12 @@ def load_config():
     - The configuration includes settings for proxies, authentication, file paths, URLs, and other application-specific data.
     - User agents list is included in the config for web scraping purposes.
     """
+    global CURRENT_VERSION
+
     CONFIG_FILE = 'config.json'
     LOCAL_PATH = Path(__file__).resolve().parent
     CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
-
-    CURRENT_VERSION = 1.3  # Increment this when making changes to the config structure
-
+    
     def create_default_config():
         """
         Create and return a dictionary containing default configuration settings.
@@ -155,6 +157,7 @@ def load_config():
             },
             "files_and_folders": {
                 "LOG_FILE_NAME": "time_lapse.log",
+                "VALID_IMAGES_FILE": "valid_images.json",
                 "VLA_BASE": str(vla_base),
                 "VIDEO_FOLDER": os.path.join(vla_base, "video"),
                 "IMAGES_FOLDER": os.path.join(vla_base, "images"),
@@ -330,6 +333,8 @@ if config:
     VLA_BASE = config['files_and_folders']['VLA_BASE']
     VIDEO_FOLDER = config['files_and_folders']['VIDEO_FOLDER']
     IMAGES_FOLDER = config['files_and_folders']['IMAGES_FOLDER']
+    VALID_IMAGES_FILE = config['files_and_folders']['VALID_IMAGES_FILE']
+    
     LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
     AUDIO_FOLDER = config['files_and_folders']['AUDIO_FOLDER']
     LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
