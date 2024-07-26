@@ -60,6 +60,9 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         else:
             message_processor(f"Failed to create video: {video_path.split('/')[-1]}", "error", ntfy=True)
 
+    except KeyboardInterrupt:
+        sys.exit(0)
+
     except Exception as e:
         error_message = f"Error in main_sequence: {str(e)}"
         logging.error(error_message)
