@@ -1,3 +1,4 @@
+# setup.sh
 #!/bin/bash
 
 # Function to check if command exists
@@ -15,11 +16,12 @@ install_debian() {
     echo -e "[i]\tUpdating package lists..."
     sudo apt-get update || { echo -e "[!]\tFailed to update package lists"; exit 1; }
 
-    echo -e "[i]\tInstalling Python3-OpenCV and venv..."
-    sudo apt-get install -y python3-opencv python3-venv || { echo -e "[!]\tFailed to install required packages"; exit 1; }
+    echo -e "[i]\tInstalling Python3-OpenCV, venv, and Chromium..."
+    sudo apt-get install -y python3-opencv python3-venv chromium-browser || { echo -e "[!]\tFailed to install required packages"; exit 1; }
 
     check_command python3
     check_command pip3
+    check_command chromium-browser
 }
 
 install_rhel() {
@@ -31,22 +33,24 @@ install_rhel() {
         exit 1
     fi
 
-    echo -e "[i]\tInstalling Python3-OpenCV and python3..."
-    sudo dnf install -y python3-opencv python3 || { echo -e "[!]\tFailed to install required packages"; exit 1; }
+    echo -e "[i]\tInstalling Python3-OpenCV, python3, and Chromium..."
+    sudo dnf install -y python3-opencv python3 chromium || { echo -e "[!]\tFailed to install required packages"; exit 1; }
 
     check_command python3
     check_command pip3
+    check_command chromium
 }
 
 install_opensuse() {
     echo -e "[i]\tUpdating package lists..."
     sudo zypper refresh || { echo -e "[!]\tFailed to update package lists"; exit 1; }
 
-    echo -e "[i]\tInstalling Python3-OpenCV and python3..."
-    sudo zypper install -y python3-opencv python3 python3-pip || { echo -e "[!]\tFailed to install required packages"; exit 1; }
+    echo -e "[i]\tInstalling Python3-OpenCV, python3, and Chromium..."
+    sudo zypper install -y python3-opencv python3 python3-pip chromium || { echo -e "[!]\tFailed to install required packages"; exit 1; }
 
     check_command python3
     check_command pip3
+    check_command chromium
 }
 
 install_macos() {
@@ -58,11 +62,12 @@ install_macos() {
     echo -e "[i]\tUpdating Homebrew..."
     brew update || { echo -e "[!]\tFailed to update Homebrew"; exit 1; }
 
-    echo -e "[i]\tInstalling OpenCV and Python..."
-    brew install opencv python || { echo -e "[!]\tFailed to install required packages"; exit 1; }
+    echo -e "[i]\tInstalling OpenCV, Python, and Chromium..."
+    brew install opencv python chromium || { echo -e "[!]\tFailed to install required packages"; exit 1; }
 
     check_command python3
     check_command pip3
+    check_command chromium
 }
 
 # Detect system type and run appropriate function
