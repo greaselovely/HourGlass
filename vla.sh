@@ -57,6 +57,5 @@ exec tmux new-session -s vla-timelapse \; \
     send-keys "echo 'Starting main script...'; venv/bin/python ../VLA" C-m \; \
     split-window -v -l 50 \; \
     select-pane -t 1 \; \
-    sleep 5
-    send-keys "tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m \; \
+    send-keys "sleep 5 && tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m \; \
     select-pane -t 0
