@@ -159,7 +159,7 @@ def main():
                     TARGET_MINUTE = sunset_time.minute
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    # downloader.load_web_page(WEBPAGE) # selenium to mimic chrome browser
+                    downloader.load_web_page(WEBPAGE) # selenium to mimic chrome browser
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
