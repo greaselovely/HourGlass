@@ -119,7 +119,11 @@ class ImageDownloader:
 
     def load_web_page(self, WEBPAGE):
         chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Run in headless mode (optional)
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.binary_location = "/usr/bin/chromium-browser"
         driver = webdriver.Chrome(options=chrome_options)
         driver.get(WEBPAGE)
         message_processor(f"Page title: {driver.title}", print_me=False)
