@@ -159,7 +159,6 @@ def main():
                     TARGET_MINUTE = sunset_time.minute
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    downloader.load_web_page(WEBPAGE) # selenium to mimic chrome browser
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
@@ -175,15 +174,14 @@ def main():
                     if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
                         main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                         break  # Exit the loop after generating the video
-                except requests.exceptions.RequestException as e:
-                    log_message = f"Session timeout or error detected, re-establishing session: {e}"
+                except Exception as e:
+                    log_message = f"Error detected, re-establishing session: {e}"
                     message_processor(log_jamming(log_message), "error")
-                    message_processor(f"Session timeout or error detected, re-establishing session...\n{e}\n", "error")
-                    session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
-                    downloader.download_image(session, IMAGE_URL)
+                    message_processor(f"Error detected, re-establishing session...\n{e}\n", "error")
+                    downloader = ImageDownloader(session, run_images_folder)
                 finally:
                     cursor.show()
-
+                    
         except KeyboardInterrupt:
             try:
                 main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
