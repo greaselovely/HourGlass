@@ -2,7 +2,7 @@
 
 from vla_config import *
 from vla_core import *
-from vla_upload import *
+# from vla_upload import *
 
 def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
     """
