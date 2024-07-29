@@ -177,7 +177,6 @@ def main():
                 except Exception as e:
                     log_message = f"Error detected, re-establishing session: {e}"
                     message_processor(log_jamming(log_message), "error")
-                    message_processor(f"Error detected, re-establishing session...\n{e}\n", "error")
                     downloader = ImageDownloader(session, run_images_folder)
                 finally:
                     cursor.show()
