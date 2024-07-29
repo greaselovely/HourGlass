@@ -153,10 +153,10 @@ def main():
             downloader = ImageDownloader(session, run_images_folder)
 
             i = 1
+            TARGET_HOUR = sunset_time.hour
+            TARGET_MINUTE = sunset_time.minute
             while True:
                 try:
-                    TARGET_HOUR = sunset_time.hour
-                    TARGET_MINUTE = sunset_time.minute
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
@@ -175,17 +175,15 @@ def main():
                         main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                         break  # Exit the loop after generating the video
                 except Exception as e:
-                    log_message = f"Error detected, re-establishing session: {e}"
-                    message_processor(log_jamming(log_message), "error")
+                    message_processor(log_jamming(f"Error detected, re-establishing session: {e}"), "error")
                     downloader = ImageDownloader(session, run_images_folder)
                 finally:
                     cursor.show()
-                    
         except KeyboardInterrupt:
             try:
                 main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
             except Exception as e:
-                message_processor(f"Error processing images to video: {e}", "error")
+                message_processor(log_jamming(f"Error processing images to video: {e}"), "error")
                 main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
             finally:
                 cursor.show()
