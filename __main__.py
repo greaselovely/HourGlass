@@ -159,6 +159,7 @@ def main():
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
+                    # downloader.load_web_page(WEBPAGE)
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
