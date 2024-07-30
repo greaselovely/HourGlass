@@ -150,7 +150,7 @@ class ImageDownloader:
         for attempt in range(2):  # We'll try twice at most: initial attempt + one retry
             r = session.get(IMAGE_URL)
             if r is None or r.status_code != 200:
-                logging.error(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200")
+                message_processor(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200", "error")
                 return None, None
 
             image_content = r.content
@@ -158,7 +158,7 @@ class ImageDownloader:
             image_hash = self.compute_hash(image_content)
 
             if image_size == 0:
-                logging.error(f"[!]\t{RED_CIRCLE} Code: {r.status_code} Zero Size")
+                message_processor(f"{RED_CIRCLE} Code: {r.status_code} Zero Size", "error")
                 return None, None
 
             today_short_time = datetime.now().strftime("%H%M%S")
@@ -168,20 +168,19 @@ class ImageDownloader:
 
             if self.prev_image_hash == image_hash:
                 if attempt == 0:  # If it's the first attempt
-                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}")
+                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}", "error", print_me=False)
                     sleep(retry_delay)
                     continue  # Try again
                 else:
-                    logging.info(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.")
+                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.", "error", print_me=False)
                     return None, None
             else:
-                logging.info(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+                message_processor(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
                 self.prev_image_filename = filename
                 self.prev_image_size = image_size
                 self.prev_image_hash = image_hash
                 return image_size, filename
 
-        # This line should never be reached, but it's here for completeness
         return None, None
 
 def setup_logging(config):
