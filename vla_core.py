@@ -130,7 +130,7 @@ class ImageDownloader:
             message_processor(f"Page title: {driver.title}", print_me=False)
             driver.quit()
         except Exception as e:
-            message_processor(f"Chromium Problem: {e}", "error")
+            message_processor(log_jamming(f"Chromium Problem: {e}"), "error")
 
     def download_image(self, session, IMAGE_URL, retry_delay=5):
         """
