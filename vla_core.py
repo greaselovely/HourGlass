@@ -7,6 +7,7 @@ import json
 import uuid
 import cursor
 import shutil
+import asyncio
 import logging
 import hashlib
 import argparse
@@ -14,20 +15,16 @@ import textwrap
 import requests
 import numpy as np
 from sys import exit
-from PIL import Image
 from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
+from pyppeteer import launch
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from urllib.parse import urljoin
 from proglog import ProgressBarLogger
 from http.client import IncompleteRead
-from datetime import datetime, timedelta
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from datetime import datetime
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 
@@ -119,21 +116,21 @@ class ImageDownloader:
         """
         return hashlib.sha256(image_content).hexdigest()
 
-    def load_web_page(self, WEBPAGE):
+
+    async def load_web_page(WEBPAGE, message_processor):
         try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--remote-debugging-port=9222")
-            # chrome_options.binary_location = "/usr/bin/chromium-browser"
-            service = Service(executable_path="/usr/bin/chromium-browser")
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            # driver = webdriver.Chrome(options=chrome_options)
-            # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options, executable_path="/usr/bin/chromium-browser")
-            driver.get(WEBPAGE)
-            message_processor(f"Page title: {driver.title}", print_me=False)
-            driver.quit()
+            browser = await launch()
+            page = await browser.newPage()
+            await page.goto(WEBPAGE)
+
+            # Get the page title
+            title = await page.title()
+            message_processor(f"Page title: {title}")
+
+            # Add your other logic here
+
+            await browser.close()
+
         except Exception as e:
             message_processor(log_jamming(f"Chromium Problem: {e}"), "error")
 
