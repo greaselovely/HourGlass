@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from proglog import ProgressBarLogger
 from http.client import IncompleteRead
-from datetime import datetime
+from datetime import datetime, timedelta
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 
