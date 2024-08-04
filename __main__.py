@@ -153,8 +153,8 @@ def main():
             downloader = ImageDownloader(session, run_images_folder)
 
             i = 1
-            TARGET_HOUR = sunset_time.hour
-            TARGET_MINUTE = sunset_time.minute
+            TARGET_HOUR = sunset_datetime.hour
+            TARGET_MINUTE = sunset_datetime.minute
             while True:
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
