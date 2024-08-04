@@ -70,7 +70,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
   
 
 
-async def main():
+def main():
     """
     Main function to orchestrate the VLA Time Lapse Creator process.
 
@@ -159,7 +159,7 @@ async def main():
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    await downloader.load_web_page(WEBPAGE)
+                    downloader.load_web_page(WEBPAGE)
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
@@ -190,4 +190,4 @@ async def main():
                 cursor.show()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
