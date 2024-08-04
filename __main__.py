@@ -148,7 +148,7 @@ def main():
                 sleep(sleep_timer)
                 message_processor(f"Awake and Running", ntfy=True, print_me=True)
             else:
-                message_processor(f"{sunset_datetime.hour}:{sunset_datetime.minute}", ntfy=True)
+                message_processor(f"Sunset\nHour: {sunset_datetime.hour} Min:{sunset_datetime.minute}", ntfy=True)
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
