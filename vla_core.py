@@ -126,9 +126,11 @@ class ImageDownloader:
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--remote-debugging-port=9222")
-            chrome_options.binary_location = "/usr/bin/chromium-browser"
+            # chrome_options.binary_location = "/usr/bin/chromium-browser"
+            service = Service(executable_path="/usr/bin/chromium-browser")
+            driver = webdriver.Chrome(service=service, options=chrome_options)
             # driver = webdriver.Chrome(options=chrome_options)
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options, executable_path="/usr/bin/chromium-browser")
+            # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options, executable_path="/usr/bin/chromium-browser")
             driver.get(WEBPAGE)
             message_processor(f"Page title: {driver.title}", print_me=False)
             driver.quit()
