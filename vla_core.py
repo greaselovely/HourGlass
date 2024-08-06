@@ -149,7 +149,7 @@ class ImageDownloader:
         Returns:
             tuple: A tuple containing the image size and filename if successful, or (None, None) if unsuccessful.
         """
-        for attempt in range(2):  # We'll try twice at most: initial attempt + one retry
+        for attempt in range(2):
             r = session.get(IMAGE_URL)
             if r is None or r.status_code != 200:
                 message_processor(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200", "error")
@@ -159,31 +159,36 @@ class ImageDownloader:
             image_size = len(image_content)
             image_hash = self.compute_hash(image_content)
 
+            message_processor(f"Current image hash: {image_hash}", print_me=True)
+            message_processor(f"Previous image hash: {self.prev_image_hash}", print_me=True)
+
             if image_size == 0:
                 message_processor(f"{RED_CIRCLE} Code: {r.status_code} Zero Size", "error")
                 return None, None
 
-            today_short_time = datetime.now().strftime("%H%M%S")
-            filename = f'vla.{today_short_date}.{today_short_time}.jpg'
-            with open(self.out_path / filename, 'wb') as f:
-                f.write(image_content)
-
             if self.prev_image_hash == image_hash:
-                if attempt == 0:  # If it's the first attempt
-                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}", "error", print_me=False)
+                if attempt == 0:
+                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}", "error", print_me=True)
                     sleep(retry_delay)
-                    continue  # Try again
+                    continue
                 else:
-                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.", "error", print_me=False)
+                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.", "error", print_me=True)
                     return None, None
             else:
                 message_processor(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+                today_short_time = datetime.now().strftime("%H%M%S")
+                filename = f'vla.{today_short_date}.{today_short_time}.jpg'
+                with open(self.out_path / filename, 'wb') as f:
+                    f.write(image_content)
+                
                 self.prev_image_filename = filename
                 self.prev_image_size = image_size
                 self.prev_image_hash = image_hash
+                message_processor(f"Updated previous image hash to: {self.prev_image_hash}", print_me=True)
                 return image_size, filename
 
         return None, None
+
 
 def setup_logging(config):
     """
