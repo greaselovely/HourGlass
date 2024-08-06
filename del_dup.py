@@ -6,15 +6,20 @@ from pathlib import Path
 def compute_hash(file_path):
     """Compute SHA256 hash of a file."""
     sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
+    with file_path.open("rb") as f:
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
 def check_and_remove_duplicate_images(folder_path):
     """Check for duplicate images based on SHA256 hash and remove the second duplicate."""
+    folder_path = Path(folder_path)
+    if not folder_path.is_dir():
+        print(f"Error: {folder_path} is not a valid directory.")
+        return []
+
     # Get all jpg files in the folder
-    image_files = sorted(Path(folder_path).glob('vla.*.jpg'))
+    image_files = sorted(folder_path.glob('vla.*.jpg'))
     
     # Filter and sort files based on the specific naming pattern
     valid_files = []
@@ -34,6 +39,10 @@ def check_and_remove_duplicate_images(folder_path):
         current_file = valid_files[i]
         next_file = valid_files[i + 1]
         
+        if not current_file.exists() or not next_file.exists():
+            print(f"Warning: File not found - {current_file if not current_file.exists() else next_file}")
+            continue
+
         current_hash = compute_hash(current_file)
         next_hash = compute_hash(next_file)
         
@@ -46,7 +55,7 @@ def check_and_remove_duplicate_images(folder_path):
     return removed_files
 
 def main():
-    folder_path = input("Enter the path to the folder containing the images: ")
+    folder_path = "/home/ssivley/VLA/images/20240806_32d0ca4b/"
     removed_files = check_and_remove_duplicate_images(folder_path)
     
     if removed_files:
