@@ -3,6 +3,8 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
+folder_path = "/path/updated/here"
+
 def compute_hash(file_path):
     """Compute SHA256 hash of a file."""
     sha256_hash = hashlib.sha256()
@@ -55,7 +57,6 @@ def check_and_remove_duplicate_images(folder_path):
     return removed_files
 
 def main():
-    folder_path = "/home/ssivley/VLA/images/20240806_32d0ca4b/"
     removed_files = check_and_remove_duplicate_images(folder_path)
     
     if removed_files:
