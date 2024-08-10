@@ -159,9 +159,6 @@ class ImageDownloader:
             image_size = len(image_content)
             image_hash = self.compute_hash(image_content)
 
-            message_processor(f"Current image hash: {image_hash}", print_me=True)
-            message_processor(f"Previous image hash: {self.prev_image_hash}", print_me=True)
-
             if image_size == 0:
                 message_processor(f"{RED_CIRCLE} Code: {r.status_code} Zero Size", "error")
                 return None, None
@@ -184,7 +181,6 @@ class ImageDownloader:
                 self.prev_image_filename = filename
                 self.prev_image_size = image_size
                 self.prev_image_hash = image_hash
-                message_processor(f"Updated previous image hash to: {self.prev_image_hash}", print_me=True)
                 return image_size, filename
 
         return None, None
