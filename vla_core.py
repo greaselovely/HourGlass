@@ -55,7 +55,7 @@ class CustomLogger(ProgressBarLogger):
         Displays the progress as a percentage, formatted with the bar name.
         """
         percentage = (value / self.bars[bar]['total']) * 100
-        print(f"[i]\t{bar.capitalize()}: {percentage:.2f}%{' ' * 100}", end="\r")
+        print(f"[i]\t{bar.capitalize()}: {percentage:.2f}%{" " * 100}", end="\r")
 
     def callback(self, **changes):
         """
