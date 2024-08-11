@@ -161,7 +161,7 @@ def main():
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    downloader.load_web_page(WEBPAGE)
+                    # downloader.load_web_page(WEBPAGE)
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
@@ -176,7 +176,7 @@ def main():
                     if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
                         main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                         break  # Exit the loop after generating the video
-                    
+
                     sleep(SECONDS)
                 except Exception as e:
                     message_processor(log_jamming(f"Error detected, re-establishing session: {e}"), "error")
