@@ -14,18 +14,15 @@ import textwrap
 import requests
 import numpy as np
 from sys import exit
-from PIL import Image
 from time import sleep
 from pathlib import Path
 from random import choice
 from wurlitzer import pipes
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from urllib.parse import urljoin
 from proglog import ProgressBarLogger
 from http.client import IncompleteRead
 from datetime import datetime, timedelta
-from selenium.webdriver.chrome.options import Options
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 
@@ -116,20 +113,6 @@ class ImageDownloader:
             str: The hexadecimal representation of the SHA-256 hash.
         """
         return hashlib.sha256(image_content).hexdigest()
-
-    def load_web_page(self, WEBPAGE):
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.binary_location = "/usr/bin/chromium-browser"
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.get(WEBPAGE)
-            message_processor(f"Page title: {driver.title}", print_me=False)
-            driver.quit()
-        except Exception as e:
-            message_processor(log_jamming(f"Chromium Problem: {e}"), "error")
 
     def download_image(self, session, IMAGE_URL, retry_delay=5):
         """

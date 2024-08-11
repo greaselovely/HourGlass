@@ -147,8 +147,6 @@ def main():
                 message_processor(f"Sleep:\t:{sleep_timer  // 60}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}", "none", ntfy=True, print_me=True)
                 sleep(sleep_timer)
                 message_processor(f"Awake and Running", ntfy=True, print_me=True)
-            # else:
-            #     message_processor(f"Sunset Hour: {sunset_datetime.hour} Sunset Min:{sunset_datetime.minute}", ntfy=True)
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
@@ -161,7 +159,6 @@ def main():
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    # downloader.load_web_page(WEBPAGE)
                     image_size, filename = downloader.download_image(session, IMAGE_URL)
                     
                     if image_size is not None:
