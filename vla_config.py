@@ -187,57 +187,46 @@ def load_config():
     def update_config(config):
         """
         Update an existing configuration to the current version while preserving existing settings.
-
-        This function checks if the provided configuration is up-to-date and updates it if necessary.
-        It ensures that new configuration options are added while preserving existing user settings.
-
-        The function performs the following steps:
-        1. Checks if the provided config has a version and if it's less than the current version.
-        2. If an update is needed:
-        a. Creates a new default configuration.
-        b. Merges the existing configuration with the default, prioritizing existing values.
-        c. Updates the version number to the current version.
-        d. Writes the updated configuration back to the config file.
-        e. Logs the update action.
-
-        Args:
-        config (dict): The existing configuration dictionary to be updated.
-
-        Returns:
-        dict: The updated configuration dictionary. If no update was needed, returns the original config.
-
-        Side Effects:
-        - May modify the config.json file on disk if an update is performed.
-        - Logs an info message when the configuration is updated.
-
-        Global Variables Used:
-        - CURRENT_VERSION: The current version number of the configuration structure.
-        - CONFIG_PATH: The file path where the configuration is stored.
-
-        Note:
-        - This function uses a nested dictionary update strategy, allowing for partial updates of nested structures.
-        - The function assumes that `create_default_config()` and `logging` are available in the scope.
-        - JSON serialization is used for writing the updated config to file, with indentation for readability.
         """
+        def recursive_update(existing, default):
+            for key, value in default.items():
+                if key not in existing:
+                    logging.info(f"Adding new key: {key}")
+                    existing[key] = value
+                elif isinstance(value, dict) and isinstance(existing[key], dict):
+                    recursive_update(existing[key], value)
+                elif existing[key] == "" or existing[key] is None:
+                    logging.info(f"Updating empty value for key: {key}")
+                    existing[key] = value
+                elif key == 'URL' and 'sun' in existing and 'sun' in default:
+                    logging.info(f"Forcing update of sun URL from {existing[key]} to {value}")
+                    existing[key] = value
+            return existing
+
         if 'version' not in config or config['version'] < CURRENT_VERSION:
+            logging.info(f"Updating config from version {config.get('version', 'unversioned')} to {CURRENT_VERSION}")
             default_config = create_default_config()
-            updated_config = default_config.copy()
+            updated_config = recursive_update(config, default_config)
             
-            # Merge existing config with default config
-            for key, value in config.items():
-                if key in updated_config and isinstance(updated_config[key], dict):
-                    updated_config[key].update(value)
-                else:
-                    updated_config[key] = value
+            # Force update of sun URL
+            if 'sun' in updated_config and 'URL' in updated_config['sun']:
+                updated_config['sun']['URL'] = default_config['sun']['URL']
+                logging.info(f"Forced update of sun URL to {updated_config['sun']['URL']}")
             
             updated_config['version'] = CURRENT_VERSION
             
-            with open(CONFIG_PATH, 'w') as file:
-                json.dump(updated_config, file, indent=2)
+            try:
+                with open(CONFIG_PATH, 'w') as file:
+                    json.dump(updated_config, file, indent=2)
+                logging.info(f"Successfully wrote updated config to {CONFIG_PATH}")
+            except Exception as e:
+                logging.error(f"Failed to write updated config: {str(e)}")
             
-            logging.info(f"Updated config file to version {CURRENT_VERSION}")
             return updated_config
+        else:
+            logging.info(f"Config is already at version {CURRENT_VERSION}, no update needed")
         return config
+
 
     try:
         if not ensure_config_readonly(CONFIG_PATH):
@@ -362,7 +351,7 @@ else:
 def reload_config():
     global config, PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER
     global LOGGING_FOLDER, AUDIO_FOLDER, LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE
-    global RED_CIRCLE, USER_AGENTS, NTFY_TOPIC, today_short_date
+    global RED_CIRCLE, USER_AGENTS, NTFY_TOPIC, NTFY_URL, today_short_date
 
     config = load_config()
     if config:
@@ -389,6 +378,7 @@ def reload_config():
         USER_AGENTS = config['user_agents']
 
         NTFY_TOPIC = config['alerts']['ntfy']
+        NTFY_URL = config['ntfy']
         
         today_short_date = datetime.now().strftime("%m%d%Y")
 

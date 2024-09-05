@@ -876,8 +876,7 @@ def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
         return False
 
     try:
-        NTFY_BASE_URL = "http://ntfy.sh/"
-        NTFY_TOPIC = urljoin(NTFY_BASE_URL, NTFY_TOPIC)
+        NTFY_TOPIC = urljoin(NTFY_URL, NTFY_TOPIC)
         message = str(message)  # cast to str in case we receive something else that won't process
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         response = requests.post(NTFY_TOPIC, headers=headers, data=message)
@@ -929,4 +928,5 @@ def find_time_and_convert(soup, text, default_time_str):
             time_match = re.search(r'\d+:\d+\s(?:am|pm)', time_text)
             if time_match:
                 return datetime.strptime(time_match.group(), '%I:%M %p').time()
+    message_processor(datetime.strptime(default_time_str, '%H:%M:%S').time())
     return datetime.strptime(default_time_str, '%H:%M:%S').time()
