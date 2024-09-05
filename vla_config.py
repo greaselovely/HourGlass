@@ -7,7 +7,7 @@ import stat
 from pathlib import Path
 from datetime import datetime
 
-CURRENT_VERSION = 1.4  # Increment this when making changes to the config structure
+CURRENT_VERSION = 1.5  # Increment this when making changes to the config structure
 
 def ensure_config_readonly(config_path):
     """
@@ -153,7 +153,7 @@ def load_config():
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
                 "SUNSET_TIME_ADD": 60,
-                "URL": "https://www.timeanddate.com/sun/@5481136"
+                "URL": "https://www.timeanddate.com/sun/@34.0788,-107.6166"
             },
             "files_and_folders": {
                 "LOG_FILE_NAME": "time_lapse.log",
