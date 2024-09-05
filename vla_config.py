@@ -2,57 +2,74 @@
 
 import json
 import logging
-import os, sys
+import os
 import stat
 from pathlib import Path
 from datetime import datetime
 
 CURRENT_VERSION = 1.5  # Increment this when making changes to the config structure
 
-def ensure_config_readonly(config_path):
+def setup_logging(config):
     """
-    Ensure the config.json file is read-only for the current user.
+    Set up logging based on the provided configuration.
 
-    This function checks the permissions of the config.json file and sets it to read-only 
-    (mode 600) if it isn't already. This helps protect sensitive configuration data.
-
-    The function performs the following steps:
-    1. Checks if the config file exists at the given path.
-    2. If it exists, attempts to set its permissions to read-only (600).
-    3. Logs the result of the operation.
+    This function sets up logging using the settings from the provided configuration dictionary.
+    It performs the following operations:
+    1. Extracts logging folder and file name from the config.
+    2. Creates the logging directory if it doesn't exist.
+    3. Configures a file handler for logging.
+    4. Sets the logging level to INFO.
+    5. Removes any existing handlers to avoid duplicate logging.
+    6. Formats log messages with timestamp, level, and message.
 
     Args:
-    config_path (Path): A Path object representing the location of the config.json file.
+        config (dict): The configuration dictionary containing logging settings.
 
     Returns:
-    bool: True if the file exists and was successfully set to read-only (or already was),
-          False if the file doesn't exist or if there was a permission error.
+        bool: True if logging setup was successful, False otherwise.
 
     Side Effects:
-    - Modifies the permissions of the config.json file if successful.
-    - Logs info or error messages using the logging module.
-
-    Raises:
-    PermissionError: If the function lacks the necessary permissions to modify the file.
-                     This error is caught and logged, and the function returns False.
-
-    Note:
-    - This function assumes the use of a Unix-like permissions system (mode 600).
-    - It requires the 'logging' module to be properly configured.
-    - The function will return True even if the file was already read-only.
+        - Creates a directory for logs if it doesn't exist.
+        - Configures the Python logging system.
+        - Creates or appends to a log file.
     """
-    if not config_path.exists():
-        logging.error("config.json does not exist")
-        return False
-
     try:
-        config_path.chmod(0o600)
-        logging.info("config.json set to 600")
-    except PermissionError:
-        logging.error("Failed to set config.json to read-only. Check your permissions.")
+        logging_folder = config['files_and_folders']['LOGGING_FOLDER']
+        log_file_name = config['files_and_folders']['LOG_FILE_NAME']
+        
+        os.makedirs(logging_folder, exist_ok=True)
+        logging_file = os.path.join(logging_folder, log_file_name)
+        
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        
+        # Remove any existing handlers to avoid duplicate logging
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+        
+        file_handler = logging.FileHandler(logging_file, mode='a')
+        file_handler.setLevel(logging.INFO)
+        
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        logger.addHandler(file_handler)
+
+        logging.info("Logging initialized")
+        return True
+
+    except Exception as e:
+        print(f"Error setting up logging: {str(e)}")
         return False
 
-    return True
+# Set up logging with default values before loading config
+DEFAULT_CONFIG = {
+    "files_and_folders": {
+        "LOGGING_FOLDER": os.path.join(Path.home(), "VLA", "logging"),
+        "LOG_FILE_NAME": "time_lapse.log"
+    }
+}
+setup_logging(DEFAULT_CONFIG)
 
 def load_config():
     """
@@ -92,8 +109,6 @@ def load_config():
     - The configuration includes settings for proxies, authentication, file paths, URLs, and other application-specific data.
     - User agents list is included in the config for web scraping purposes.
     """
-    global CURRENT_VERSION
-
     CONFIG_FILE = 'config.json'
     LOCAL_PATH = Path(__file__).resolve().parent
     CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
@@ -105,11 +120,6 @@ def load_config():
         This function generates a default configuration structure for the application.
         It sets up various parameters including file paths, URLs, authentication settings,
         and other application-specific data.
-
-        The function performs the following steps:
-        1. Determines the user's home directory.
-        2. Creates a base path for VLA (Very Large Array) related files and folders.
-        3. Constructs a dictionary with default values for all configuration settings.
 
         Returns:
         dict: A dictionary containing the default configuration settings. Key sections include:
@@ -127,7 +137,7 @@ def load_config():
         - The function uses the global CURRENT_VERSION constant to set the configuration version.
         - File paths are constructed relative to the user's home directory.
         - Sensitive fields (like authentication credentials) are left empty by default.
-        - The sun URL is set to a specific location (5481136) which may need to be adjusted for different geographical areas.
+        - The sun URL is set to a specific location which may need to be adjusted for different geographical areas.
         - The user_agents list includes a variety of browser and device combinations for web scraping purposes.
         """
         home = Path.home()
@@ -187,6 +197,33 @@ def load_config():
     def update_config(config):
         """
         Update an existing configuration to the current version while preserving existing settings.
+
+        This function checks if the provided configuration is up-to-date and updates it if necessary.
+        It ensures that new configuration options are added while preserving existing user settings.
+
+        The function performs the following steps:
+        1. Checks if the provided config has a version and if it's less than the current version.
+        2. If an update is needed:
+            a. Creates a new default configuration.
+            b. Recursively merges the existing configuration with the default, prioritizing existing non-blank values.
+            c. Updates the version number to the current version.
+            d. Writes the updated configuration back to the config file.
+            e. Logs the update action.
+
+        Args:
+        config (dict): The existing configuration dictionary to be updated.
+
+        Returns:
+        dict: The updated configuration dictionary. If no update was needed, returns the original config.
+
+        Side Effects:
+        - May modify the config.json file on disk if an update is performed.
+        - Logs an info message when the configuration is updated.
+
+        Note:
+        - This function uses a recursive dictionary update strategy, allowing for updates of nested structures.
+        - The function assumes that `create_default_config()` and `logging` are available in the scope.
+        - JSON serialization is used for writing the updated config to file, with indentation for readability.
         """
         def recursive_update(existing, default):
             for key, value in default.items():
@@ -215,99 +252,38 @@ def load_config():
             
             updated_config['version'] = CURRENT_VERSION
             
-            try:
-                with open(CONFIG_PATH, 'w') as file:
-                    json.dump(updated_config, file, indent=2)
-                logging.info(f"Successfully wrote updated config to {CONFIG_PATH}")
-            except Exception as e:
-                logging.error(f"Failed to write updated config: {str(e)}")
-            
             return updated_config
-        else:
-            logging.info(f"Config is already at version {CURRENT_VERSION}, no update needed")
         return config
 
-
     try:
-        if not ensure_config_readonly(CONFIG_PATH):
-            print("Proceeding with potentially writable config file")
-
+        logging.info(f"Attempting to load configuration from {CONFIG_PATH}")
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         config = update_config(config)
 
+        # Write updated config back to file
+        with open(CONFIG_PATH, 'w') as file:
+            json.dump(config, file, indent=2)
+        logging.info("Updated configuration written to file")
+
     except FileNotFoundError:
-        print(f"config.json not found at {CONFIG_PATH}; creating with default values.")
+        logging.warning(f"config.json not found at {CONFIG_PATH}; creating with default values.")
         config = create_default_config()
         with open(CONFIG_PATH, 'w') as file:
             json.dump(config, file, indent=2)
-        ensure_config_readonly(CONFIG_PATH)
     
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
+        logging.error(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
         return None
     
-    return config
+    # Update logging configuration if needed
+    if config:
+        if config['files_and_folders']['LOGGING_FOLDER'] != DEFAULT_CONFIG['files_and_folders']['LOGGING_FOLDER'] or \
+        config['files_and_folders']['LOG_FILE_NAME'] != DEFAULT_CONFIG['files_and_folders']['LOG_FILE_NAME']:
+            setup_logging(config)
+            logging.info("Logging configuration updated based on loaded config")
 
-def update_config(new_config):
-    """
-    Update the configuration in config.json with new settings.
-
-    This function updates the configuration file (config.json) with the provided new configuration.
-    It handles file permissions to ensure the file is writable during the update process and
-    is set back to read-only afterwards for security.
-
-    The function performs the following steps:
-    1. Identifies the location of the config.json file.
-    2. Temporarily changes the file permissions to make it writable.
-    3. Writes the new configuration to the file.
-    4. Restores the file to read-only status.
-
-    Args:
-    new_config (dict): A dictionary containing the new configuration settings to be written to the file.
-
-    Returns:
-    bool: True if the update was successful, False if there was an error writing to the file.
-
-    Side Effects:
-    - Modifies the contents of the config.json file.
-    - Temporarily changes file permissions.
-    - Logs information about the update process.
-
-    Raises:
-    IOError: Caught internally if there's an error writing to the file.
-
-    Global Constants:
-    CONFIG_FILE (str): Name of the configuration file ('config.json').
-    LOCAL_PATH (Path): Path to the directory containing this script.
-    CONFIG_PATH (Path): Full path to the config file.
-
-    Note:
-    - This function assumes the existence of an `ensure_config_readonly()` function to set read-only permissions.
-    - The function uses a 'try-except-finally' block to ensure permissions are restored even if an error occurs.
-    - Logging is used to record the success or failure of the update process.
-    """
-    CONFIG_FILE = 'config.json'
-    LOCAL_PATH = Path(__file__).resolve().parent
-    CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
-    
-    # Temporarily make the file writable
-    current_mode = CONFIG_PATH.stat().st_mode
-    writable_mode = current_mode | stat.S_IWUSR
-
-    try:
-        CONFIG_PATH.chmod(writable_mode)
-        with open(CONFIG_PATH, 'w') as f:
-            json.dump(new_config, f, indent=2)
-        logging.info("config.json updated successfully")
-    except IOError:
-        logging.error("Error writing to config.json")
-        return False
-    finally:
-        # Restore read-only permissions
-        ensure_config_readonly(CONFIG_PATH)
-
-    return True
+        return config
 
 # Load the configuration
 config = load_config()
@@ -332,27 +308,54 @@ if config:
     IMAGE_URL = config['urls']['IMAGE_URL']
     WEBPAGE = config['urls']['WEBPAGE']
     
-    global GREEN_CIRCLE, RED_CIRCLE
     GREEN_CIRCLE = config['output_symbols']['GREEN_CIRCLE']
     RED_CIRCLE = config['output_symbols']['RED_CIRCLE']
     
-    global USER_AGENTS
     USER_AGENTS = config['user_agents']
 
     NTFY_TOPIC = config['alerts']['ntfy']
+    NTFY_URL = config['ntfy']
+
     
-    global today_short_date
     today_short_date = datetime.now().strftime("%m%d%Y")
 
+    logging.info("Configuration loaded successfully")
 else:
     logging.error("Failed to load configuration. Exiting.")
+    import sys
     sys.exit(1)
 
 def reload_config():
+    """
+    Reload the configuration settings from the config file.
+
+    This function reloads the configuration from the config file and updates all global variables.
+    It's useful for refreshing the configuration during runtime without restarting the application.
+
+    The function performs the following steps:
+    1. Calls load_config() to reload the configuration from file.
+    2. If successful, updates all global variables with the new configuration values.
+    3. If unsuccessful, logs an error message.
+
+    Global Variables Updated:
+    - All global variables defined in the main configuration loading section.
+
+    Returns:
+    None
+
+    Side Effects:
+    - Updates global variables if successful.
+    - Logs information about the reloading process.
+
+    Note:
+    - This function assumes that all global variables are already defined.
+    - It uses the same load_config() function used for initial configuration loading.
+    """
     global config, PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER
     global LOGGING_FOLDER, AUDIO_FOLDER, LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE
     global RED_CIRCLE, USER_AGENTS, NTFY_TOPIC, NTFY_URL, today_short_date
 
+    logging.info("Reloading configuration")
     config = load_config()
     if config:
         PROXIES = config['proxies']
@@ -384,4 +387,4 @@ def reload_config():
 
         logging.info("Configuration reloaded successfully")
     else:
-        logging.error("Failed to reload configuration.")
+        logging.error("Failed to reload configuration")

@@ -165,53 +165,6 @@ class ImageDownloader:
 
         return None, None
 
-
-def setup_logging(config):
-    """
-    Set up logging based on the provided configuration.
-
-    Args:
-        config (dict): The configuration dictionary containing logging settings.
-
-    Returns:
-        bool: True if logging setup was successful, False otherwise.
-    """
-    try:
-        LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
-        LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
-        LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
-        # print(f"Attempting to set up logging to: {LOGGING_FILE}")
-
-        os.makedirs(LOGGING_FOLDER, exist_ok=True)
-        
-        # Set up logging
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
-        
-        # Remove any existing handlers to avoid duplicate logging
-        for handler in logger.handlers[:]:
-            logger.removeHandler(handler)
-        
-        # Create a file handler
-        file_handler = logging.FileHandler(LOGGING_FILE, mode='a')
-        file_handler.setLevel(logging.INFO)
-        
-        # Create a formatting for the logs
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        
-        # Add the handler to the logger
-        logger.addHandler(file_handler)
-
-        logging.info("Logging initialized successfully")
-        # print("Logging initialized successfully")
-        
-        return True
-
-    except Exception as e:
-        print(f"Error setting up logging: {str(e)}")
-        return False
-
 def clear():
     """
     Clears the terminal screen.
