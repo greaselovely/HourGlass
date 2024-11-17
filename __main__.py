@@ -68,30 +68,9 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         logging.error(error_message)
         message_processor(error_message, "error", ntfy=True)
   
-
-
 def main():
     """
     Main function to orchestrate the VLA Time Lapse Creator process.
-
-    This function performs the following operations:
-    1. Loads configuration and sets up logging.
-    2. Creates necessary directories for the process.
-    3. Parses command-line arguments for movie-only mode.
-    4. Generates a unique run ID and sets up run-specific folders.
-    5. Executes either movie-only mode or normal operation (image capture and movie creation).
-    6. In normal operation:
-       - Retrieves sunrise and sunset times.
-       - Waits until sunrise if necessary.
-       - Continuously captures images at intervals until sunset.
-       - Handles session timeouts and errors.
-       - Triggers video creation at sunset.
-    7. Handles keyboard interrupts by attempting to create a video with existing images.
-
-    The function runs until interrupted or until the sunset time is reached in normal operation.
-
-    Returns:
-    None
     """
     if not load_config():
         message_processor("Failed to load configuration. Exiting.", "error")
@@ -150,7 +129,7 @@ def main():
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
-            downloader = ImageDownloader(session, run_images_folder)
+            downloader = ImageDownloader(session, run_images_folder, config)
 
             i = 1
             TARGET_HOUR = sunset_datetime.hour
@@ -159,7 +138,8 @@ def main():
                 try:
                     SECONDS = choice(range(15, 22))  # sleep timer seconds
                     
-                    image_size, filename = downloader.download_image(session, IMAGE_URL)
+                    # Corrected method call
+                    image_size, filename = downloader.download_image(IMAGE_URL)
                     
                     if image_size is not None:
                         activity(i, run_images_folder, image_size)
@@ -167,7 +147,6 @@ def main():
                         clear()
                         print(f"[!]\t{RED_CIRCLE} Iteration: {i}")
 
-                    
                     i += 1
                     now = datetime.now()
                     if now.hour == TARGET_HOUR and now.minute >= TARGET_MINUTE:
@@ -177,9 +156,10 @@ def main():
                     sleep(SECONDS)
                 except Exception as e:
                     message_processor(log_jamming(f"Error detected, re-establishing session: {e}"), "error")
-                    downloader = ImageDownloader(session, run_images_folder)
+                    downloader = ImageDownloader(session, run_images_folder, config)  # Reinitialize downloader
                 finally:
                     cursor.show()
+
         except KeyboardInterrupt:
             try:
                 main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
