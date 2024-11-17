@@ -74,8 +74,8 @@ class ImageDownloader:
     A class to handle downloading images and managing hash collisions.
 
     This class provides methods for downloading images, computing their hash,
-    and handling potential hash collisions. It keeps track of the previously
-    downloaded image to avoid duplicates.
+    and handling potential hash collisions. It tracks repeated hash detections
+    and updates the counter in the config file under the 'alerts' section.
 
     Attributes:
         out_path (Path): The directory where images will be saved.
@@ -85,12 +85,14 @@ class ImageDownloader:
         prev_image_hash (str): The hash of the previously downloaded image.
     """
 
-    def __init__(self, session, out_path):
+    def __init__(self, session, out_path, config):
         self.out_path = Path(out_path)
         self.session = session
+        self.config = config
         self.prev_image_filename = self.get_last_image_filename()
         self.prev_image_size = None
         self.prev_image_hash = self.get_last_image_hash()
+        self.repeated_hash_count = self.config['alerts'].get('repeated_hash_count', 0)
 
     def get_last_image_filename(self):
         image_files = sorted(self.out_path.glob('vla.*.jpg'))
@@ -114,23 +116,53 @@ class ImageDownloader:
         """
         return hashlib.sha256(image_content).hexdigest()
 
-    def download_image(self, session, IMAGE_URL, retry_delay=5):
+    def download_image(self, IMAGE_URL, retry_delay=5):
         """
-        Downloads an image from the specified URL and saves it to the output path.
+        Downloads an image and manages hash collision alerts with escalation levels.
 
-        This method handles potential hash collisions and updates the previous image information.
-        If a hash collision is detected, it will retry the download once after a delay.
+        This method downloads an image from the specified URL, computes its hash, and checks
+        for repeated hashes. If the hash matches the previous image's hash, a repeated hash
+        count is incremented. Alerts are triggered based on escalation points to reduce noise
+        while maintaining visibility for critical thresholds.
+
+        The repeated hash count resets when a new hash is detected.
 
         Args:
-            session (requests.Session): The session object to use for the HTTP request.
             IMAGE_URL (str): The URL of the image to download.
-            retry_delay (int): Delay in seconds before retrying if a hash collision occurs.
+            retry_delay (int): Time in seconds to wait before retrying a download 
+                            when a repeated hash is detected (default: 5 seconds).
 
         Returns:
-            tuple: A tuple containing the image size and filename if successful, or (None, None) if unsuccessful.
+            tuple:
+                - image_size (int): The size of the downloaded image in bytes, or None if the download failed.
+                - filename (str): The filename of the saved image, or None if the download failed.
+
+        Raises:
+            None: This function handles all exceptions internally, logging any errors encountered.
+
+        Behavior:
+            - Increments the `repeated_hash_count` for each repeated hash detected.
+            - Triggers escalation alerts when `repeated_hash_count` matches escalation points (e.g., 10, 50, 100).
+            - Logs detailed information about hash collisions and new hashes.
+            - Resets the `repeated_hash_count` when a new hash is detected.
+
+        Examples:
+            # Download an image and process repeated hash logic.
+            image_size, filename = downloader.download_image("http://example.com/image.jpg")
+
+        Notes:
+            - Escalation points are pre-defined as [10, 50, 100, 500]. These can be adjusted for
+            custom use cases or loaded dynamically from the configuration.
+            - Alerts are sent to the `message_processor` for logging and optional notifications.
+            - This function is resilient to download errors, ensuring robust image acquisition even
+            in challenging network conditions.
         """
+
+        # Define escalation points for alerts
+        escalation_points = self.config.get('alerts', {}).get('escalation_points', [10, 50, 100, 500])
+
         for attempt in range(2):
-            r = session.get(IMAGE_URL)
+            r = self.session.get(IMAGE_URL)
             if r is None or r.status_code != 200:
                 message_processor(f"{RED_CIRCLE} Code: {r.status_code} r = None or Not 200", "error")
                 return None, None
@@ -144,15 +176,39 @@ class ImageDownloader:
                 return None, None
 
             if self.prev_image_hash == image_hash:
+                # Increment the repeated hash count
+                self.repeated_hash_count += 1
+
+                # Check if the count matches an escalation point
+                if self.repeated_hash_count in escalation_points:
+                    message_processor(
+                        f"Alert: Hash repeated {self.repeated_hash_count} times.",
+                        "alert",
+                        print_me=True,
+                        ntfy=True
+                    )
+
+                # Log the repeated hash
+                message_processor(
+                    f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} "
+                    f"(Repeated: {self.repeated_hash_count} times)",
+                    "error",
+                    print_me=True
+                )
+
+                # Retry if this is the first attempt
                 if attempt == 0:
-                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash}", "error", print_me=True)
                     sleep(retry_delay)
                     continue
                 else:
-                    message_processor(f"{RED_CIRCLE} Code: {r.status_code} Same Hash: {image_hash} after retry. Skipping.", "error", print_me=True)
                     return None, None
             else:
-                message_processor(f"{GREEN_CIRCLE} Code: {r.status_code}  New Hash: {image_hash}")
+                # Reset the repeated hash count for a new hash
+                self.repeated_hash_count = 0
+                message_processor(
+                    f"{GREEN_CIRCLE} Code: {r.status_code} New Hash: {image_hash} "
+                    f"(Repeated: {self.repeated_hash_count} times)"
+                )
                 today_short_time = datetime.now().strftime("%H%M%S")
                 filename = f'vla.{today_short_date}.{today_short_time}.jpg'
                 with open(self.out_path / filename, 'wb') as f:
@@ -164,6 +220,15 @@ class ImageDownloader:
                 return image_size, filename
 
         return None, None
+
+
+    def update_config(self):
+        """
+        Updates the repeated hash count in the configuration file.
+        """
+        self.config['alerts']['repeated_hash_count'] = self.repeated_hash_count
+        with open('config.json', 'w') as file:
+            json.dump(self.config, file, indent=2)
 
 def clear():
     """

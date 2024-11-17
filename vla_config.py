@@ -7,7 +7,7 @@ import stat
 from pathlib import Path
 from datetime import datetime
 
-CURRENT_VERSION = 1.5  # Increment this when making changes to the config structure
+CURRENT_VERSION = 1.8  # Increment this when making changes to the config structure
 
 def setup_logging(config):
     """
@@ -156,8 +156,10 @@ def load_config():
                 }
             },
             "alerts": {
-                "comment" : "This is just the topic subscription name, not the entire URL",
-                "ntfy": ""
+                "comment": "This is just the topic subscription name, not the entire URL",
+                "ntfy": "",
+                "repeated_hash_threshold": 10,
+                "escalation_points": [10, 50, 100, 500]
             },
             "sun": {
                 "SUNRISE": "06:00:00",
