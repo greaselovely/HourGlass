@@ -119,13 +119,24 @@ def main():
             sunrise_datetime = datetime.combine(now.date(), sunrise_time)
             sunset_datetime = datetime.combine(now.date(), sunset_time)
             sunset_datetime += timedelta(minutes=SUNSET_TIME_ADD)
+
+            if now > sunset_datetime:
+                print("Current time is after sunset. Exiting script.")
+                sys.exit(0)
             
             if now < sunrise_datetime:
-                time_diff = (sunrise_datetime - now).total_seconds()
-                sleep_timer = int(time_diff)
-                message_processor(f"Sleep:\t:{sleep_timer  // 60}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}", "none", ntfy=True, print_me=True)
+                sleep_timer = int((sunrise_datetime - now).total_seconds())
+                hours, minutes = divmod(sleep_timer // 60, 60)
+
+                message_processor(
+                    f"Sleep:\t{hours:02d}:{minutes:02d}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}",
+                    "none",
+                    ntfy=True,
+                    print_me=True
+                )
                 sleep(sleep_timer)
                 message_processor(f"Awake and Running", ntfy=True, print_me=True)
+
 
             session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
             
