@@ -13,6 +13,88 @@ from memory_optimizer import optimized_create_time_lapse, memory_managed_operati
 # Configuration constants
 TEST_DURATION_HOURS = 2
 
+def find_available_run_folders():
+    """
+    Find all available run folders with images and return friendly info.
+    
+    Returns:
+        list: List of dicts with folder info including friendly dates
+    """
+    if not os.path.exists(IMAGES_FOLDER):
+        return []
+    
+    folders = []
+    for folder_name in os.listdir(IMAGES_FOLDER):
+        folder_path = os.path.join(IMAGES_FOLDER, folder_name)
+        if os.path.isdir(folder_path):
+            # Count JPG files
+            jpg_count = len([f for f in os.listdir(folder_path) if f.lower().endswith('.jpg')])
+            if jpg_count > 0:
+                # Parse date from folder name (YYYYMMDD_xxxxxxxx)
+                try:
+                    date_part = folder_name.split('_')[0]
+                    date_obj = datetime.strptime(date_part, '%Y%m%d')
+                    friendly_date = date_obj.strftime('%B %d, %Y')  # e.g., "June 26, 2025"
+                    day_name = date_obj.strftime('%A')  # e.g., "Thursday"
+                    
+                    # Get folder creation time
+                    creation_time = datetime.fromtimestamp(os.path.getctime(folder_path))
+                    
+                    folders.append({
+                        'path': folder_path,
+                        'run_id': folder_name,
+                        'display_name': f"{friendly_date} ({day_name})",
+                        'jpg_count': jpg_count,
+                        'creation_time': creation_time,
+                        'date_obj': date_obj
+                    })
+                except (ValueError, IndexError):
+                    # Skip folders that don't match expected format
+                    continue
+    
+    # Sort by date (newest first)
+    folders.sort(key=lambda x: x['date_obj'], reverse=True)
+    return folders
+
+def prompt_user_for_run_folder_selection(folders):
+    """
+    Prompt user to select a run folder from available options.
+    
+    Args:
+        folders (list): List of folder info dicts
+        
+    Returns:
+        dict: Selected folder info
+    """
+    print("\nAvailable image folders:")
+    print("-" * 60)
+    
+    for i, folder_info in enumerate(folders, 1):
+        creation_time = folder_info['creation_time'].strftime("%H:%M")
+        print(f"{i}. {folder_info['display_name']}")
+        print(f"   Created: {creation_time} | Images: {folder_info['jpg_count']}")
+        print()
+    
+    while True:
+        try:
+            choice = input("Select folder number (or press Enter for most recent): ").strip()
+            
+            if choice == "":
+                # Default to most recent (first in list)
+                selected = folders[0]
+                print(f"Using: {selected['display_name']}")
+                return selected
+            
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(folders):
+                selected = folders[choice_num - 1]
+                print(f"Using: {selected['display_name']}")
+                return selected
+            else:
+                print(f"Please enter a number between 1 and {len(folders)}")
+        except ValueError:
+            print("Please enter a valid number or press Enter for default")
+
 def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
     """
     Execute the main sequence of operations for creating a time-lapse video.
@@ -79,19 +161,58 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             message_processor("Concatenating multiple audio tracks")
             final_song = concatenate_songs(audio_result)
         else:
-            final_song = audio_result[0][0]
+            # Handle single audio file - check if it's a tuple or just a path
+            if isinstance(audio_result[0], tuple) and len(audio_result[0]) > 0:
+                final_song = audio_result[0][0]  # Extract path from tuple
+            else:
+                final_song = audio_result[0]  # Use the result directly
+            message_processor("Using single audio track")
         
-        # Create time-lapse video with optimized memory management
-        message_processor("Creating Time-Lapse Video (Optimized)")
-        video_result, video_metrics = monitor_resource_usage(
-            optimized_create_time_lapse,
-            valid_files, 
-            video_path, 
-            fps, 
-            final_song, 
-            crossfade_seconds=3, 
-            end_black_seconds=3
-        )
+        # Create time-lapse video (simplified without black frame for now)
+        message_processor("Creating Time-Lapse Video")
+        
+        # Temporary simple version without black frame
+        try:
+            from vla_core import CustomLogger
+            logger = CustomLogger()
+            
+            # Import moviepy components
+            from moviepy.editor import ImageSequenceClip, AudioFileClip
+            
+            message_processor("Creating video clip from images")
+            video_clip = ImageSequenceClip(valid_files, fps=fps)
+            
+            message_processor("Processing audio")
+            if isinstance(final_song, str):
+                audio_clip = AudioFileClip(final_song)
+            else:
+                audio_clip = final_song
+            
+            # Sync audio and video
+            if audio_clip.duration < video_clip.duration:
+                message_processor("Looping audio to match video length")
+                audio_clip = audio_clip.loop(duration=video_clip.duration)
+            else:
+                audio_clip = audio_clip.subclip(0, video_clip.duration)
+            
+            # Apply effects
+            audio_clip = audio_clip.audio_fadein(3).audio_fadeout(3)
+            video_clip = video_clip.set_audio(audio_clip)
+            video_clip = video_clip.fadein(3).fadeout(3)
+            
+            # Write video
+            message_processor("Writing video file")
+            video_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
+            
+            # Cleanup
+            video_clip.close()
+            audio_clip.close()
+            
+            video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
+            
+        except Exception as e:
+            message_processor(f"Error in video creation: {e}", "error", ntfy=True)
+            video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
 
         # Check if video was created successfully
         if os.path.exists(video_path):
@@ -164,6 +285,8 @@ def main():
                        help="Validate configuration and exit")
     parser.add_argument("--no-time-check", action="store_true",
                        help="Bypass sunrise/sunset time checking (for testing)")
+    parser.add_argument("--force-prompt", action="store_true",
+                       help="Force folder selection prompt in movie mode")
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
@@ -244,6 +367,29 @@ def main():
     # ===== MOVIE-ONLY MODE =====
     if args.movie:
         message_processor("Movie-only mode: Creating video from existing images", "info", ntfy=True)
+        
+        # Always prompt for folder selection in movie mode, or if only one folder but --force-prompt
+        available_folders = find_available_run_folders()
+        if not available_folders:
+            message_processor("No image folders found. Nothing to process.", "error")
+            return
+        elif len(available_folders) == 1 and not args.force_prompt:
+            selected_folder_info = available_folders[0]
+            message_processor(f"Using only available folder: {selected_folder_info['display_name']}")
+        else:
+            selected_folder_info = prompt_user_for_run_folder_selection(available_folders)
+        
+        # Update paths for selected folder
+        run_images_folder = selected_folder_info['path']
+        run_valid_images_file = os.path.join(run_images_folder, VALID_IMAGES_FILE)
+        # Use current run_id for audio folder (fresh audio download)
+        run_audio_folder = os.path.join(AUDIO_FOLDER, run_id)  # Use today's audio folder
+        
+        # Use the date from the selected folder for the video filename
+        folder_date = selected_folder_info['date_obj'].strftime('%m%d%Y')
+        video_filename = f"VLA.{folder_date}.mp4"
+        video_path = os.path.join(VIDEO_FOLDER, video_filename)
+        
         main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
         if health_monitor:
             health_monitor.stop_monitoring()
