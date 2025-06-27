@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-
-set -e  # Exit immediately if a command exits with a non-zero status.
+# vla.sh
+set -e
 
 # Function to activate virtual environment and run Python command
 run_python_command() {
@@ -9,8 +9,8 @@ run_python_command() {
 
 # Check if we're already in a tmux session
 if [ -n "$TMUX" ]; then
-    echo "Already in a tmux session. Running vla directly."
-    run_python_command "import __main__; __main__.main()"
+    echo "Already in a tmux session. Running VLA directly."
+    run_python_command "import main; main.main()"
     exit 0
 fi
 
@@ -24,10 +24,7 @@ fi
 LOG_FILE=$(run_python_command "
 import sys
 import os
-
-# Add the current directory to Python path
 sys.path.append(os.getcwd())
-
 try:
     from vla_config import LOGGING_FILE
     print(LOGGING_FILE)
@@ -53,8 +50,11 @@ if tmux has-session -t vla-timelapse 2>/dev/null; then
     exec tmux attach-session -t vla-timelapse
 fi
 
+# Pass any arguments to the Python script (like --no-time-check)
+ARGS="$*"
+
 exec tmux new-session -s vla-timelapse \; \
-    send-keys "echo 'Starting main script...'; venv/bin/python ../VLA" C-m \; \
+    send-keys "echo 'Starting VLA Operation Telescope...'; venv/bin/python main.py $ARGS" C-m \; \
     split-window -v -l 20 \; \
     select-pane -t 1 \; \
     send-keys "sleep 5 && tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m \; \

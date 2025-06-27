@@ -154,7 +154,7 @@ class ImageDownloader:
             - Escalation points are pre-defined as [10, 50, 100, 500]. These can be adjusted for
             custom use cases or loaded dynamically from the configuration.
             - Alerts are sent to the `message_processor` for logging and optional notifications.
-            - This function is resilient to download errors, ensuring robust image acquisition even
+            - This function is resilient to download errors, ensuringimage acquisition even
             in challenging network conditions.
         """
 
