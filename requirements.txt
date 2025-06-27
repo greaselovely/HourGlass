@@ -1,3 +1,7 @@
+# requirements.txt
+# VLA Time Lapse Creator Requirements
+
+# Core dependencies (existing)
 apscheduler==3.10.4
 beautifulsoup4==4.12.3
 cursor==1.3.5
@@ -15,3 +19,6 @@ wurlitzer==3.0.3
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+
+# Operation Telescope additions
+psutil>=5.8.0          # System monitoring (CPU, memory, disk usage)

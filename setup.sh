@@ -1,5 +1,5 @@
-# setup.sh
 #!/bin/bash
+# setup.sh
 
 # Function to check if command exists
 check_command() {
@@ -15,10 +15,8 @@ check_command() {
 install_debian() {
     echo -e "[i]\tUpdating package lists..."
     sudo apt-get update || { echo -e "[!]\tFailed to update package lists"; exit 1; }
-
     echo -e "[i]\tInstalling Python3-OpenCV, venv..."
     sudo apt-get install -y python3-opencv python3-venv || { echo -e "[!]\tFailed to install required packages"; exit 1; }
-
     check_command python3
     check_command pip3
 }
@@ -31,7 +29,6 @@ install_rhel() {
         echo -e "[!]\tFailed to check for updates"
         exit 1
     fi
-
     check_command python3
     check_command pip3
 }
@@ -39,10 +36,8 @@ install_rhel() {
 install_opensuse() {
     echo -e "[i]\tUpdating package lists..."
     sudo zypper refresh || { echo -e "[!]\tFailed to update package lists"; exit 1; }
-
     echo -e "[i]\tInstalling Python3-OpenCV, python3"
     sudo zypper install -y python3-opencv python3 python3-pip || { echo -e "[!]\tFailed to install required packages"; exit 1; }
-
     check_command python3
     check_command pip3
 }
@@ -52,13 +47,10 @@ install_macos() {
         echo -e "[!]\tHomebrew is required for macOS. Please install it first."
         exit 1
     fi
-
     echo -e "[i]\tUpdating Homebrew..."
     brew update || { echo -e "[!]\tFailed to update Homebrew"; exit 1; }
-
     echo -e "[i]\tInstalling OpenCV, Python"
     brew install opencv python || { echo -e "[!]\tFailed to install required packages"; exit 1; }
-
     check_command python3
     check_command pip3
 }
@@ -104,12 +96,42 @@ else
     echo -e "[!]\trequirements.txt not found. Skipping package installation."
 fi
 
-echo -e "[i]\tVerifying OpenCV installation..."
-if python -c "import cv2; print(cv2.__version__)" 2>/dev/null; then
+echo -e "[i]\tVerifying core dependencies..."
+if python -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null; then
     echo -e "[✓]\tOpenCV installed successfully"
 else
     echo -e "[!]\tOpenCV installation verification failed"
     exit 1
 fi
 
+echo -e "[i]\tVerifying Operation Telescope dependencies..."
+
+# Verify psutil (system monitoring)
+if python -c "import psutil; print('psutil version:', psutil.__version__)" 2>/dev/null; then
+    echo -e "[✓]\tpsutil installed successfully"
+else
+    echo -e "[!]\tpsutil installation verification failed"
+    exit 1
+fi
+
+# Verify PIL/Pillow (enhanced image validation)
+if python -c "import PIL; print('Pillow version:', PIL.__version__)" 2>/dev/null; then
+    echo -e "[✓]\tPillow installed successfully"
+else
+    echo -e "[!]\tPillow installation verification failed"
+    exit 1
+fi
+
+# Verify other key dependencies
+echo -e "[i]\tVerifying additional dependencies..."
+
+if python -c "import requests, beautifulsoup4, moviepy, numpy" 2>/dev/null; then
+    echo -e "[✓]\tCore Python packages verified"
+else
+    echo -e "[!]\tSome core Python packages failed verification"
+    exit 1
+fi
+
+echo -e "[✓]\tAll Operation Telescope dependencies verified"
 echo -e "[i]\tInstallation complete. Virtual environment and packages are installed."
+echo -e "[i]\tYou can now run: ./vla.sh or python main.py"
