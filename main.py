@@ -1,4 +1,4 @@
-# __main__.py
+# main.py
 
 from vla_config import *
 from vla_core import *

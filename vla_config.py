@@ -1,37 +1,33 @@
 # vla_config.py
 
+import glob
 import json
 import logging
+import logging.handlers
 import os
-import stat
+# import stat
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 CURRENT_VERSION = 1.8  # Increment this when making changes to the config structure
 
 def setup_logging(config):
     """
-    Set up logging based on the provided configuration.
+    Set up logging with rotation based on the provided configuration.
 
     This function sets up logging using the settings from the provided configuration dictionary.
-    It performs the following operations:
-    1. Extracts logging folder and file name from the config.
-    2. Creates the logging directory if it doesn't exist.
-    3. Configures a file handler for logging.
-    4. Sets the logging level to INFO.
-    5. Removes any existing handlers to avoid duplicate logging.
-    6. Formats log messages with timestamp, level, and message.
-
+    It now includes log rotation to prevent huge log files and automatic cleanup of old logs.
+    
+    Features:
+    - Rotates log files when they reach 50MB
+    - Keeps 14 backup files (roughly 2 weeks of logs)
+    - Automatically cleans up logs older than 14 days
+    
     Args:
         config (dict): The configuration dictionary containing logging settings.
 
     Returns:
         bool: True if logging setup was successful, False otherwise.
-
-    Side Effects:
-        - Creates a directory for logs if it doesn't exist.
-        - Configures the Python logging system.
-        - Creates or appends to a log file.
     """
     try:
         logging_folder = config['files_and_folders']['LOGGING_FOLDER']
@@ -47,7 +43,13 @@ def setup_logging(config):
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
         
-        file_handler = logging.FileHandler(logging_file, mode='a')
+        # Use RotatingFileHandler instead of regular FileHandler
+        file_handler = logging.handlers.RotatingFileHandler(
+            filename=logging_file,
+            maxBytes=50*1024*1024,  # 50MB per file
+            backupCount=14,         # Keep 14 backup files
+            encoding='utf-8'
+        )
         file_handler.setLevel(logging.INFO)
         
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -55,12 +57,33 @@ def setup_logging(config):
         
         logger.addHandler(file_handler)
 
-        logging.info("Logging initialized")
+        # Clean up old log files as backup safety measure
+        _cleanup_old_logs(logging_folder, days_to_keep=14)
+
+        logging.info("Logging initialized with rotation")
         return True
 
     except Exception as e:
         print(f"Error setting up logging: {str(e)}")
         return False
+
+def _cleanup_old_logs(log_directory, days_to_keep=14):
+    """
+    Helper function to clean up log files older than specified days.
+    This is a backup cleanup in case the rotating handler misses anything.
+    """
+    try:
+        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+        
+        for log_file in glob.glob(os.path.join(log_directory, "*.log*")):
+            try:
+                file_time = datetime.fromtimestamp(os.path.getmtime(log_file))
+                if file_time < cutoff_date:
+                    os.remove(log_file)
+            except (OSError, IOError):
+                pass  # Silently ignore cleanup errors
+    except Exception:
+        pass  # Don't let cleanup errors break logging setup
 
 # Set up logging with default values before loading config
 DEFAULT_CONFIG = {
