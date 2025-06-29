@@ -1,13 +1,14 @@
 # vla_downloader.py
 
-import re
 import json
 import hashlib
 import requests
 from time import sleep
-from datetime import datetime
 from pathlib import Path
-
+from datetime import datetime
+from vla_core import message_processor
+from vla_core import message_processor, GREEN_CIRCLE, RED_CIRCLE
+from vla_core import create_session, message_processor
 
 class EnhancedImageDownloader:
     """
@@ -68,8 +69,7 @@ class EnhancedImageDownloader:
         Returns True if recovery successful, False otherwise.
         """
         try:
-            from vla_core import create_session, message_processor
-            from random import choice
+
             
             message_processor("Attempting session recovery...", "warning")
             
@@ -111,7 +111,6 @@ class EnhancedImageDownloader:
                     json.dump(self.config, file, indent=2)
                 self.config_write_counter = 0  # Reset counter after write
             except Exception as e:
-                from vla_core import message_processor
                 message_processor(f"Failed to update config: {e}", "error")
 
     def calculate_backoff_delay(self):
@@ -134,7 +133,6 @@ class EnhancedImageDownloader:
         Returns:
             tuple: (image_size, filename) or (None, None) if failed
         """
-        from vla_core import message_processor, GREEN_CIRCLE, RED_CIRCLE
         
         # Check if we need to apply exponential backoff
         backoff_delay = self.calculate_backoff_delay()

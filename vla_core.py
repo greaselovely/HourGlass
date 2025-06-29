@@ -5,15 +5,12 @@ import cv2
 import sys
 import json
 import uuid
-import cursor
 import shutil
 import logging
 import hashlib
-import argparse
 import textwrap
 import requests
 import numpy as np
-from sys import exit
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -22,7 +19,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from proglog import ProgressBarLogger
 from http.client import IncompleteRead
-from datetime import datetime, timedelta
+from datetime import datetime
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 

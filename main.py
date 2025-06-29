@@ -1,14 +1,20 @@
 # main.py
 
-from vla_config import *
+import sys
+import cursor
+import argparse
 from vla_core import *
-
-# Operation Telescope imports
+from vla_config import *
+from vla_core import CustomLogger
 from vla_loop import create_vla_main_loop
+from config_validator import ConfigValidator
+from health_monitor import create_health_monitor
+from config_validator import validate_config_quick
 from vla_downloader import EnhancedImageDownloader
+from moviepy.editor import ImageSequenceClip, AudioFileClip
 from vla_validator import validate_images as validate_images_fast
-from config_validator import validate_config_quick, health_check_quick
-from memory_optimizer import optimized_create_time_lapse, memory_managed_operation, monitor_resource_usage
+from memory_optimizer import memory_managed_operation, monitor_resource_usage
+
 
 # Configuration constants
 TEST_DURATION_HOURS = 2
@@ -173,11 +179,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         
         # Temporary simple version without black frame
         try:
-            from vla_core import CustomLogger
             logger = CustomLogger()
-            
-            # Import moviepy components
-            from moviepy.editor import ImageSequenceClip, AudioFileClip
             
             message_processor("Creating video clip from images")
             video_clip = ImageSequenceClip(valid_files, fps=fps)
@@ -311,17 +313,19 @@ def main():
 
     # ===== HEALTH MONITORING INITIALIZATION =====
     try:
-        from health_monitor import create_health_monitor
         health_monitor = create_health_monitor(config, check_interval=300)  # 5 minutes
         health_monitor.start_monitoring(background=True)
         message_processor("Health monitoring started", "info")
+        
+        # Make health_monitor globally accessible for other modules
+        sys.modules[__name__].health_monitor = health_monitor
+        
     except Exception as e:
         message_processor(f"Failed to start health monitoring: {e}", "warning")
         health_monitor = None
 
     # Handle utility commands
     if args.health:
-        from health_monitor import create_health_monitor
         health_monitor = create_health_monitor(config)
         detailed_health = health_monitor.perform_health_check()
         
@@ -336,7 +340,6 @@ def main():
         return
     
     if args.validate:
-        from config_validator import ConfigValidator
         validator = ConfigValidator()
         result = validator.validate_config(config)
         health_result = validator.health_check(config)

@@ -1,12 +1,13 @@
 # vla_validator.py
 
 import os
+import cv2
 import json
-import imghdr
 import logging
 from PIL import Image
 from pathlib import Path
-
+from wurlitzer import pipes
+from vla_core import message_processor
 
 def validate_images_fast(run_images_folder, run_valid_images_file, force_revalidate=False):
     """
@@ -26,7 +27,6 @@ def validate_images_fast(run_images_folder, run_valid_images_file, force_revalid
     Returns:
         tuple: (list of valid image paths, count of valid images)
     """
-    from vla_core import message_processor
     
     run_valid_images_file = Path(run_valid_images_file)
     run_images_folder = Path(run_images_folder)
@@ -72,12 +72,6 @@ def validate_images_fast(run_images_folder, run_valid_images_file, force_revalid
             # Quick size check - skip tiny files
             file_size = full_image_path.stat().st_size
             if file_size < 1024:  # Less than 1KB is probably not a valid image
-                skipped_count += 1
-                continue
-            
-            # Quick format check using file header
-            image_format = imghdr.what(str(full_image_path))
-            if image_format not in ['jpeg']:
                 skipped_count += 1
                 continue
             
@@ -147,14 +141,12 @@ def validate_images_thorough(run_images_folder, run_valid_images_file):
     
     Args:
         run_images_folder (str): Directory containing images to validate
-        run_images_valid_file (str): Path to JSON file storing valid image paths
+        run_valid_images_file (str): Path to JSON file storing valid image paths
         
     Returns:
         tuple: (list of valid image paths, count of valid images)
     """
-    import cv2
-    from wurlitzer import pipes
-    from vla_core import message_processor
+
     
     run_valid_images_file = Path(run_valid_images_file)
     run_images_folder = Path(run_images_folder)

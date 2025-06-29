@@ -1,16 +1,14 @@
-# health_monitor.py - System health monitoring and alerting
+# health_monitor.py
 
-import os
-import json
 import time
 import psutil
 import requests
 import logging
-from pathlib import Path
-from datetime import datetime, timedelta
+from typing import Dict, List
+from datetime import datetime
 from threading import Thread, Event
+from vla_core import message_processor
 from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Callable
 
 
 @dataclass
@@ -515,7 +513,6 @@ class HealthMonitor:
         
         # Send alert
         try:
-            from vla_core import message_processor
             message_processor(
                 f"Health Alert [{severity.upper()}]: {metric['message']}", 
                 "error" if severity == 'critical' else "warning",

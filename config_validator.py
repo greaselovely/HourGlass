@@ -367,21 +367,6 @@ def validate_config_quick(config_path='config.json'):
     return result['valid']
 
 
-def health_check_quick(config_path='config.json'):
-    """
-    Quick health check function.
-    
-    Args:
-        config_path (str): Path to configuration file
-        
-    Returns:
-        str: Health status ('healthy', 'degraded', or 'unhealthy')
-    """
-    validator = ConfigValidator(config_path)
-    result = validator.health_check(quick=True)
-    return result['overall_status']
-
-
 def get_config_recommendations(config_path='config.json'):
     """
     Get configuration improvement recommendations.

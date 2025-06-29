@@ -1,10 +1,12 @@
 # vla_loop.py
 
+import os
 import cursor
 import logging
 from time import sleep
 from random import choice
 from datetime import datetime
+from vla_core import message_processor, activity, clear, create_session, log_jamming, RED_CIRCLE
 
 
 class VLAMainLoop:
@@ -66,8 +68,7 @@ class VLAMainLoop:
             run_audio_folder: Directory for audio files
             test_mode: Whether running in test mode (--no-time-check)
         """
-        from vla_core import message_processor, activity, clear, RED_CIRCLE
-        import os
+
         
         try:
             clear()
@@ -133,7 +134,6 @@ class VLAMainLoop:
     
     def _handle_successful_download(self, image_size, run_images_folder):
         """Handle successful image download."""
-        from vla_core import activity
         
         # Reset failure counters on success
         self.consecutive_failures = 0
@@ -151,7 +151,6 @@ class VLAMainLoop:
     
     def _handle_failed_download(self, downloader, run_images_folder):
         """Handle failed image download with categorized error handling."""
-        from vla_core import message_processor, clear, RED_CIRCLE
         
         self.consecutive_failures += 1
         
@@ -200,7 +199,6 @@ class VLAMainLoop:
     
     def _attempt_session_recreation(self, downloader):
         """Attempt to recreate the session."""
-        from vla_core import message_processor, create_session
         
         try:
             message_processor("Attempting session recreation...", "warning")
@@ -221,7 +219,6 @@ class VLAMainLoop:
     
     def _handle_unexpected_error(self, error, downloader):
         """Handle unexpected errors in the main loop."""
-        from vla_core import message_processor, log_jamming
         
         self.consecutive_failures += 1
         self.error_counts['unexpected'] += 1
@@ -245,7 +242,6 @@ class VLAMainLoop:
     def _handle_keyboard_interrupt(self, main_sequence_callback, run_images_folder, 
                                  video_path, run_audio_folder, run_valid_images_file):
         """Handle keyboard interrupt gracefully."""
-        from vla_core import message_processor
         
         try:
             message_processor("Processing existing images into video...", "info", ntfy=True)
@@ -261,7 +257,6 @@ class VLAMainLoop:
     def _attempt_final_video_creation(self, main_sequence_callback, run_images_folder, 
                                     video_path, run_audio_folder, run_valid_images_file):
         """Attempt to create final video when exiting due to failures."""
-        from vla_core import message_processor
         
         try:
             message_processor("Attempting final video creation...", "info")
@@ -285,7 +280,6 @@ class VLAMainLoop:
     
     def _log_session_summary(self):
         """Log a summary of the session."""
-        from vla_core import message_processor
         
         duration = datetime.now() - self.last_success_time
         
@@ -326,10 +320,6 @@ def enhanced_main_loop_simple(downloader, run_images_folder, target_hour, target
     Simplified enhanced main loop for drop-in replacement.
     Runs until sunset time - no failure limits.
     """
-    from vla_core import message_processor, activity, clear, RED_CIRCLE
-    from random import choice
-    import cursor
-    import os
     
     consecutive_failures = 0
     

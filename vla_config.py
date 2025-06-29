@@ -1,11 +1,11 @@
 # vla_config.py
 
+import os
+import sys
 import glob
 import json
 import logging
 import logging.handlers
-import os
-# import stat
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -348,7 +348,6 @@ if config:
     logging.info("Configuration loaded successfully")
 else:
     logging.error("Failed to load configuration. Exiting.")
-    import sys
     sys.exit(1)
 
 def reload_config():

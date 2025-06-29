@@ -2,14 +2,10 @@
 
 import gc
 import os
-import sys
 import psutil
-import logging
 import numpy as np
-from pathlib import Path
 from contextlib import contextmanager
-from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
-
+from vla_core import message_processor
 
 class MemoryOptimizer:
     """
@@ -99,7 +95,7 @@ class MemoryOptimizer:
         Args:
             reason (str): Reason for cleanup (for logging)
         """
-        from vla_core import message_processor
+        
         
         before_memory = self._get_memory_usage()
         
@@ -107,13 +103,8 @@ class MemoryOptimizer:
         gc.collect()
         
         # Additional cleanup for numpy arrays
-        try:
-            import numpy as np
-            # Clear numpy cache if it exists
-            if hasattr(np, 'clear_cache'):
-                np.clear_cache()
-        except ImportError:
-            pass
+        if hasattr(np, 'clear_cache'):
+            np.clear_cache()
         
         after_memory = self._get_memory_usage()
         freed_mb = before_memory - after_memory
@@ -180,145 +171,10 @@ def memory_managed_operation(operation_name="", force_cleanup_after=True):
         # Log significant memory changes
         memory_change = after_info['current_mb'] - before_info['current_mb']
         if abs(memory_change) > 50:  # Log changes > 50MB
-            from vla_core import message_processor
             direction = "increased" if memory_change > 0 else "decreased"
             message_processor(
                 f"Memory {direction} by {abs(memory_change):.1f}MB during {operation_name}"
             )
-
-
-def optimized_create_time_lapse(valid_files, video_path, fps, audio_input, 
-                              crossfade_seconds=3, end_black_seconds=3, 
-                              chunk_size=1000):
-    """
-    Memory-optimized version of create_time_lapse for large image sets.
-    
-    Args:
-        valid_files (list): List of image file paths
-        video_path (str): Output video path
-        fps (int): Frames per second
-        audio_input: Audio input (file path or AudioClip)
-        crossfade_seconds (int): Crossfade duration
-        end_black_seconds (int): Black screen duration at end
-        chunk_size (int): Number of images to process at once
-    """
-    from vla_core import CustomLogger, message_processor
-    
-    with memory_managed_operation("optimized_time_lapse_creation") as optimizer:
-        logger = CustomLogger()
-        
-        try:
-            message_processor(f"Creating optimized time-lapse with {len(valid_files)} images")
-            
-            # Process images in chunks for large datasets
-            if len(valid_files) > chunk_size:
-                message_processor(f"Large dataset detected, processing in chunks of {chunk_size}")
-                video_clips = []
-                
-                for i in range(0, len(valid_files), chunk_size):
-                    chunk_files = valid_files[i:i + chunk_size]
-                    message_processor(f"Processing chunk {i//chunk_size + 1}/{(len(valid_files) + chunk_size - 1)//chunk_size}")
-                    
-                    # Create clip for this chunk
-                    chunk_clip = ImageSequenceClip(chunk_files, fps=fps)
-                    video_clips.append(chunk_clip)
-                    
-                    # Check memory after each chunk
-                    memory_info = optimizer.check_memory_usage(f"chunk_{i//chunk_size + 1}")
-                    if memory_info.get('cleanup_triggered'):
-                        message_processor("Memory cleanup triggered during chunk processing")
-                
-                # Concatenate all chunks
-                message_processor("Concatenating video chunks")
-                video_clip = concatenate_videoclips(video_clips)
-                
-                # Clean up individual chunks
-                for clip in video_clips:
-                    clip.close()
-                del video_clips
-                gc.collect()
-                
-            else:
-                # Standard processing for smaller datasets
-                video_clip = ImageSequenceClip(valid_files, fps=fps)
-            
-            # Process audio
-            message_processor("Processing Audio")
-            if isinstance(audio_input, str):
-                audio_clip = AudioFileClip(audio_input)
-            elif hasattr(audio_input, 'audio_fadein'):
-                audio_clip = audio_input
-            else:
-                raise ValueError("Invalid audio input")
-            
-            # Check memory after audio loading
-            optimizer.check_memory_usage("after_audio_load")
-            
-            # Sync audio and video
-            message_processor(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
-            
-            if audio_clip.duration < video_clip.duration:
-                message_processor("Audio is shorter than video. Looping audio.", "warning")
-                audio_clip = audio_clip.loop(duration=video_clip.duration)
-            else:
-                audio_clip = audio_clip.subclip(0, video_clip.duration)
-            
-            # Apply effects
-            message_processor("Applying Audio and Video Effects")
-            audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
-            video_clip = video_clip.set_audio(audio_clip)
-            video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
-            
-            # Add end frame
-            message_processor("Creating End Frame")
-            black_frame = np.zeros((video_clip.h, video_clip.w, 3), dtype=np.uint8)
-            black_frame_clip = ImageSequenceClip([black_frame], fps=fps).set_duration(end_black_seconds)
-            
-            # Final concatenation
-            message_processor("Final Video Assembly")
-            final_clip = concatenate_videoclips([video_clip, black_frame_clip])
-            
-            # Check memory before writing
-            memory_info = optimizer.check_memory_usage("before_video_write")
-            message_processor(f"Memory usage before write: {memory_info['current_mb']:.1f}MB")
-            
-            # Write video
-            message_processor("Writing Video File")
-            final_clip.write_videofile(
-                video_path, 
-                codec="libx264", 
-                audio_codec="aac", 
-                logger=logger,
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True
-            )
-            
-        except Exception as e:
-            error_message = f"Error in optimized_create_time_lapse: {str(e)}"
-            logging.error(error_message)
-            message_processor(error_message, "error", ntfy=True)
-            raise
-        
-        finally:
-            # Ensure all clips are properly closed
-            message_processor("Cleaning up video resources")
-            try:
-                if 'video_clip' in locals():
-                    video_clip.close()
-                if 'audio_clip' in locals():
-                    audio_clip.close()
-                if 'final_clip' in locals():
-                    final_clip.close()
-                if 'black_frame_clip' in locals():
-                    black_frame_clip.close()
-            except Exception as close_error:
-                message_processor(f"Error closing clips: {str(close_error)}", "warning")
-            
-            # Force cleanup
-            optimizer.force_cleanup("video_creation_complete")
-    
-    message_processor(f"Optimized time-lapse saved: {video_path}")
-
 
 def get_system_performance_info():
     """
@@ -364,7 +220,6 @@ def monitor_resource_usage(operation_func, *args, **kwargs):
     Returns:
         tuple: (function_result, resource_usage_report)
     """
-    from vla_core import message_processor
     
     # Get initial state
     start_time = psutil.time.time()
