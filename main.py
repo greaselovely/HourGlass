@@ -5,12 +5,11 @@ import cursor
 import argparse
 from vla_core import *
 from vla_config import *
-from vla_core import CustomLogger
+from vla_core import CustomLogger, ImageDownloader
 from vla_loop import create_vla_main_loop
 from config_validator import ConfigValidator
 from health_monitor import create_health_monitor
 from config_validator import validate_config_quick
-from vla_downloader import EnhancedImageDownloader
 from moviepy.editor import ImageSequenceClip, AudioFileClip
 from vla_validator import validate_images as validate_images_fast
 from memory_optimizer import memory_managed_operation, monitor_resource_usage
@@ -471,13 +470,14 @@ def main():
             return
 
         # ===== ENHANCED DOWNLOADER SETUP =====
-        downloader = EnhancedImageDownloader(
+        downloader = ImageDownloader(
             session=session,
             out_path=run_images_folder,
             config=config,
             user_agents=USER_AGENTS,
             proxies=PROXIES,
-            webpage=WEBPAGE
+            webpage=WEBPAGE,
+            health_monitor=health_monitor  # Pass health monitor
         )
         
         message_processor("Enhanced downloader initialized", "info")
