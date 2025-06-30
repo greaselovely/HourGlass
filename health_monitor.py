@@ -58,7 +58,7 @@ class HealthMonitor:
             'memory_percent': 85.0,          # Warn if more than 85% used
             'cpu_percent': 80.0,            # Warn if more than 80% used over time
             'error_rate_percent': 10.0,      # Warn if error rate > 10%
-            'capture_rate_min': 2.0,        # Warn if < 2 images per minute
+            'capture_rate_min': 0.5,        # Warn if < 2 images per minute
         }
         
         # Health history
