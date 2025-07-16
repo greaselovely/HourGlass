@@ -11,6 +11,7 @@ import hashlib
 import textwrap
 import requests
 import numpy as np
+from main import time_offset
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -275,7 +276,7 @@ class ImageDownloader:
                     )
                     
                     # Save the image
-                    today_short_time = datetime.now().strftime("%H%M%S")
+                    today_short_time = (datetime.now() + timedelta(hours=time_offset)).strftime("%H%M%S")
                     filename = f'vla.{today_short_date}.{today_short_time}.jpg'
                     
                     with open(self.out_path / filename, 'wb') as f:
@@ -346,7 +347,7 @@ def clear():
     """
     os.system("cls" if os.name == "nt" else "clear")
 
-def get_or_create_run_id():
+def get_or_create_run_id(time_offset=0):
     """
     Get an existing run ID for today or create a new one.
 
@@ -369,8 +370,8 @@ def get_or_create_run_id():
       which should be defined elsewhere in the codebase.
     - UUID is used to ensure uniqueness when creating a new run ID.
     """
-    today = datetime.now().strftime("%Y%m%d")
-    run_folders = find_today_run_folders()
+    today = (datetime.now() + timedelta(hours=time_offset)).strftime("%Y%m%d")
+    run_folders = find_today_run_folders(time_offset)
     
     if not run_folders:
         # No existing folders, create a new one
@@ -384,7 +385,7 @@ def get_or_create_run_id():
         selected_folder = prompt_user_for_folder_selection(run_folders)
         return os.path.basename(selected_folder)
 
-def find_today_run_folders():
+def find_today_run_folders(time_offset=0):
     """
     Find all run folders for today in the images directory.
 
@@ -405,7 +406,7 @@ def find_today_run_folders():
       defined elsewhere in the code, representing the path to the main images directory.
     - The function only considers immediate subdirectories of IMAGES_FOLDER, not nested directories.
     """
-    today = datetime.now().strftime("%Y%m%d")
+    today = (datetime.now() + timedelta(hours=time_offset)).strftime("%Y%m%d")
     return [os.path.join(IMAGES_FOLDER, d) for d in os.listdir(IMAGES_FOLDER) if d.startswith(today)]
 
 def prompt_user_for_folder_selection(folders):
@@ -515,7 +516,7 @@ def process_image_logs(LOGGING_FILE, number_of_valid_files):
     that "Same Hash" and "New Hash" are indicators for failed and successful
     downloads respectively.
     """
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = (datetime.now() + timedelta(hours=time_offset)).strftime("%Y-%m-%d")
     with open(LOGGING_FILE, "r") as log_file:
         today_lines = [line for line in log_file if today in line]
     today_log = ''.join(today_lines)

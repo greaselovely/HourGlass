@@ -188,6 +188,7 @@ def load_config():
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
                 "SUNSET_TIME_ADD": 60,
+                "TIME_OFFSET_HOURS": 0,
                 "URL": "https://www.timeanddate.com/sun/@34.0788,-107.6166"
             },
             "files_and_folders": {

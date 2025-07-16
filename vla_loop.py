@@ -3,7 +3,7 @@
 import os
 import cursor
 import logging
-from time import sleep
+from time import sleep, timedelta
 from random import choice
 from datetime import datetime
 from vla_core import message_processor, activity, clear, create_session, log_jamming, RED_CIRCLE
@@ -22,12 +22,14 @@ class VLAMainLoop:
     - Comprehensive error categorization
     """
     
-    def __init__(self, config, user_agents, proxies, webpage, image_url):
+    def __init__(self, config, user_agents, proxies, webpage, image_url, time_offset=0):
         self.config = config
         self.user_agents = user_agents
         self.proxies = proxies
         self.webpage = webpage
         self.image_url = image_url
+        self.time_offset = time_offset
+        self.last_success_time = datetime.now() + timedelta(hours=self.time_offset)
         
         # Failure tracking (for statistics and recovery, not for giving up)
         self.consecutive_failures = 0
@@ -48,12 +50,12 @@ class VLAMainLoop:
         }
         
         # State tracking
-        self.last_success_time = datetime.now()
+        self.last_success_time = datetime.now() + timedelta(hours=self.time_offset)
         self.loop_iteration = 0
         
     def run_main_loop(self, downloader, run_images_folder, target_hour, target_minute, 
                      main_sequence_callback, run_valid_images_file, video_path, run_audio_folder,
-                     test_mode=False):
+                     test_mode=False, time_offset=0):
         """
         Execute the main image capture loop witherror handling.
         
@@ -107,7 +109,7 @@ class VLAMainLoop:
                         self._handle_failed_download(downloader, run_images_folder)
                     
                     # Check exit conditions - ONLY sunset time, no failure limits
-                    now = datetime.now()
+                    now = datetime.now() + timedelta(hours=self.time_offset)
                     if now.hour == target_hour and now.minute >= target_minute:
                         message_processor("Target time reached. Creating final video.", "info", ntfy=True)
                         main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
@@ -138,7 +140,7 @@ class VLAMainLoop:
         # Reset failure counters on success
         self.consecutive_failures = 0
         self.session_recreation_count = 0
-        self.last_success_time = datetime.now()
+        self.last_success_time = datetime.now() + timedelta(hours=self.time_offset)
         
         # Reset sleep range to normal
         self.current_sleep_range = self.base_sleep_seconds
@@ -281,7 +283,7 @@ class VLAMainLoop:
     def _log_session_summary(self):
         """Log a summary of the session."""
         
-        duration = datetime.now() - self.last_success_time
+        duration = (datetime.now() + timedelta(hours=self.time_offset)) - self.last_success_time
         
         summary = (
             f"Session Summary:\n"
@@ -296,7 +298,7 @@ class VLAMainLoop:
         logging.info(summary)
 
 
-def create_vla_main_loop(config, user_agents, proxies, webpage, image_url):
+def create_vla_main_loop(config, user_agents, proxies, webpage, image_url, time_offset=0):
     """
     Factory function to create a configured VLAMainLoop instance.
     
@@ -310,7 +312,8 @@ def create_vla_main_loop(config, user_agents, proxies, webpage, image_url):
     Returns:
         VLAMainLoop: Configured main loop instance
     """
-    return VLAMainLoop(config, user_agents, proxies, webpage, image_url)
+    return VLAMainLoop(config, user_agents, proxies, webpage, image_url, time_offset=time_offset)
+
 
 
 def enhanced_main_loop_simple(downloader, run_images_folder, target_hour, target_minute,
@@ -358,7 +361,7 @@ def enhanced_main_loop_simple(downloader, run_images_folder, target_hour, target
                 iteration += 1
                 
                 # Check exit condition - ONLY sunset time
-                now = datetime.now()
+                now = datetime.now() + timedelta(hours=self.time_offset)
                 if now.hour == target_hour and now.minute >= target_minute:
                     main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                     break

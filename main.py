@@ -294,6 +294,10 @@ def main():
     if not load_config():
         message_processor("Failed to load configuration. Exiting.", "error")
         return
+    
+    time_offset = 0
+    if "sun" in config and "TIME_OFFSET_HOURS" in config["sun"]:
+        time_offset = config["sun"]["TIME_OFFSET_HOURS"]
 
     # Validate configuration
     if not validate_config_quick():
@@ -352,7 +356,7 @@ def main():
         return
 
     # ===== RUN SETUP =====
-    run_id = get_or_create_run_id()
+    run_id = get_or_create_run_id(time_offset)
     message_processor(f"Run ID: {run_id}", "info")
     
     # Create run-specific folders
@@ -415,7 +419,7 @@ def main():
             sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', SUNRISE)
             sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
 
-            now = datetime.now()
+            now = datetime.now() + timedelta(hours=time_offset)
             sunrise_datetime = datetime.combine(now.date(), sunrise_time)
             sunset_datetime = datetime.combine(now.date(), sunset_time)
             sunset_datetime += timedelta(minutes=SUNSET_TIME_ADD)
@@ -486,7 +490,7 @@ def main():
         message_processor("Awake and Running", ntfy=True, print_me=True)
         
         # Create and run the VLA main loop
-        vla_loop = create_vla_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL)
+        vla_loop = create_vla_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL, time_offset=time_offset)
         
         # Enhanced main loop with health monitoring integration
         def enhanced_main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
