@@ -11,7 +11,6 @@ import hashlib
 import textwrap
 import requests
 import numpy as np
-from main import time_offset
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -79,10 +78,11 @@ class ImageDownloader:
     - Health monitoring integration
     """
 
-    def __init__(self, session, out_path, config, user_agents=None, proxies=None, webpage=None, health_monitor=None):
+    def __init__(self, session, out_path, config, user_agents=None, proxies=None, webpage=None, health_monitor=None, time_offset=0):
         self.out_path = Path(out_path)
         self.session = session
         self.config = config
+        self.time_offset = time_offset
         self.user_agents = user_agents or []
         self.proxies = proxies or {}
         self.webpage = webpage
@@ -276,7 +276,7 @@ class ImageDownloader:
                     )
                     
                     # Save the image
-                    today_short_time = (datetime.now() + timedelta(hours=time_offset)).strftime("%H%M%S")
+                    today_short_time = (datetime.now() + timedelta(hours=self.time_offset)).strftime("%H%M%S")
                     filename = f'vla.{today_short_date}.{today_short_time}.jpg'
                     
                     with open(self.out_path / filename, 'wb') as f:
@@ -486,7 +486,7 @@ def remove_valid_images_json(run_valid_images_file):
         os.remove(run_valid_images_file)
         message_processor(f"Removed {run_valid_images_file}")
 
-def process_image_logs(LOGGING_FILE, number_of_valid_files):
+def process_image_logs(LOGGING_FILE, number_of_valid_files, time_offset=0):
     """
     Process image logs for the current day and generate a summary of image download attempts.
 
@@ -497,6 +497,7 @@ def process_image_logs(LOGGING_FILE, number_of_valid_files):
     Parameters:
     LOGGING_FILE (str): Path to the log file containing image download attempts.
     run_valid_images_file (str): Path to the JSON file containing valid images.
+    time_offset (int): Hour offset for date calculations.
 
     Returns:
     str: A formatted summary string containing:

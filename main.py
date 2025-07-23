@@ -231,7 +231,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             try:
                 # Display daily statistics
                 message_processor("=== Daily Statistics ===")
-                daily_stats = process_image_logs(LOGGING_FILE, number_of_valid_files)
+                daily_stats = process_image_logs(LOGGING_FILE, number_of_valid_files, time_offset)
                 message_processor(daily_stats)
                 
                 # Cleanup with memory management
@@ -442,8 +442,11 @@ def main():
                     ntfy=True,
                     print_me=True
                 )
+                if health_monitor:
+                    health_monitor.set_sleep_status(True)
                 sleep(sleep_timer)
-                message_processor(f"Awake and Running", ntfy=True, print_me=True)
+                if health_monitor:
+                    health_monitor.set_sleep_status(False)
 
             TARGET_HOUR = sunset_datetime.hour
             TARGET_MINUTE = sunset_datetime.minute
@@ -481,7 +484,8 @@ def main():
             user_agents=USER_AGENTS,
             proxies=PROXIES,
             webpage=WEBPAGE,
-            health_monitor=health_monitor  # Pass health monitor
+            health_monitor=health_monitor,  # Pass health monitor
+            time_offset=time_offset
         )
         
         message_processor("Enhanced downloader initialized", "info")

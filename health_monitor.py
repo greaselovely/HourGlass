@@ -77,6 +77,9 @@ class HealthMonitor:
             'start_time': datetime.now(),
             'last_image_time': None
         }
+        
+        # Sleep status tracking
+        self.is_sleeping = False
     
     def start_monitoring(self, background=True):
         """
@@ -107,6 +110,14 @@ class HealthMonitor:
             self.monitor_thread.join(timeout=5)
         
         logging.info("Health monitoring stopped")
+    
+    def set_sleep_status(self, is_sleeping: bool):
+        """Set whether the system is in sleep mode."""
+        self.is_sleeping = is_sleeping
+        if is_sleeping:
+            logging.info("Health monitor: System entering sleep mode")
+        else:
+            logging.info("Health monitor: System waking from sleep mode")
     
     def _monitoring_loop(self):
         """Main monitoring loop."""
@@ -404,6 +415,10 @@ class HealthMonitor:
     def _check_capture_performance(self) -> List[HealthMetric]:
         """Check image capture performance."""
         metrics = []
+        
+        # Skip capture performance checks during sleep mode
+        if self.is_sleeping:
+            return metrics
         
         try:
             uptime_hours = self._get_uptime_hours()
