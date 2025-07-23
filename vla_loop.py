@@ -318,7 +318,7 @@ def create_vla_main_loop(config, user_agents, proxies, webpage, image_url, time_
 
 def enhanced_main_loop_simple(downloader, run_images_folder, target_hour, target_minute,
                              main_sequence_callback, run_valid_images_file, video_path, 
-                             run_audio_folder):
+                             run_audio_folder, time_offset=0):
     """
     Simplified enhanced main loop for drop-in replacement.
     Runs until sunset time - no failure limits.
@@ -361,7 +361,7 @@ def enhanced_main_loop_simple(downloader, run_images_folder, target_hour, target
                 iteration += 1
                 
                 # Check exit condition - ONLY sunset time
-                now = datetime.now() + timedelta(hours=self.time_offset)
+                now = datetime.now() + timedelta(hours=time_offset)
                 if now.hour == target_hour and now.minute >= target_minute:
                     main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                     break

@@ -100,7 +100,7 @@ def prompt_user_for_run_folder_selection(folders):
         except ValueError:
             print("Please enter a valid number or press Enter for default")
 
-def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
+def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset=0):
     """
     Execute the main sequence of operations for creating a time-lapse video.
     Enhanced with memory management and performance monitoring.
@@ -396,7 +396,7 @@ def main():
         video_filename = f"VLA.{folder_date}.mp4"
         video_path = os.path.join(VIDEO_FOLDER, video_filename)
         
-        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
+        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
         if health_monitor:
             health_monitor.stop_monitoring()
         return
@@ -500,7 +500,7 @@ def main():
         def enhanced_main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
             """Wrapper for main_sequence with health monitoring updates."""
             try:
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
                 if health_monitor:
                     health_monitor.update_performance_stats('video_created')
             except Exception as e:
@@ -525,12 +525,12 @@ def main():
         message_processor("Keyboard interrupt received", "warning", ntfy=True)
         try:
             message_processor("Processing existing images into video...")
-            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
+            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
         except Exception as e:
             message_processor(f"Error processing images to video: {e}", "error")
             try:
                 # Fallback attempt
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
             except Exception as fallback_error:
                 message_processor(f"Fallback video creation failed: {fallback_error}", "error", ntfy=True)
         finally:
