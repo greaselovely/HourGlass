@@ -1,7 +1,7 @@
 # youtube_refresh_token.py
 import json
 from google_auth_oauthlib.flow import InstalledAppFlow
-from vla_config import config
+from timelapse_config import config
 
 """
 This module handles the OAuth 2.0 flow to obtain a new refresh token for the YouTube API.

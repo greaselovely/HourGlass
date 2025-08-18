@@ -1,4 +1,4 @@
-# vla_validator.py
+# timelapse_validator.py
 
 import os
 import cv2

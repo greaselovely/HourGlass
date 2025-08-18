@@ -1,4 +1,4 @@
-# vla_config.py
+# timelapse_config.py
 
 import os
 import sys
@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 1.8  # Increment this when making changes to the config structure
+CURRENT_VERSION = 2.0  # HourGlass version with dynamic project configuration
 
 def setup_logging(config):
     """
@@ -88,8 +88,8 @@ def _cleanup_old_logs(log_directory, days_to_keep=14):
 # Set up logging with default values before loading config
 DEFAULT_CONFIG = {
     "files_and_folders": {
-        "LOGGING_FOLDER": os.path.join(Path.home(), "VLA", "logging"),
-        "LOG_FILE_NAME": "time_lapse.log"
+        "LOGGING_FOLDER": os.path.join(Path.home(), "HourGlass", "logging"),
+        "LOG_FILE_NAME": "timelapse.log"
     }
 }
 setup_logging(DEFAULT_CONFIG)
@@ -163,46 +163,84 @@ def load_config():
         - The sun URL is set to a specific location which may need to be adjusted for different geographical areas.
         - The user_agents list includes a variety of browser and device combinations for web scraping purposes.
         """
+        # Return minimal default config - full config should be created via initial_setup.py
         home = Path.home()
-        vla_base = os.path.join(home, "VLA")
+        project_base = os.path.join(home, "HourGlass", "default")
         return {
             "version": CURRENT_VERSION,
+            "project": {
+                "name": "default",
+                "description": "Default HourGlass project"
+            },
+            "capture": {
+                "IMAGE_PATTERN": "default.*.jpg",
+                "FILENAME_FORMAT": "default.%m%d%Y.%H%M%S.jpg",
+                "CAPTURE_INTERVAL": 30,
+                "MAX_RETRIES": 3,
+                "RETRY_DELAY": 5
+            },
+            "video": {
+                "FPS": 10,
+                "OUTPUT_FORMAT": "mp4",
+                "CODEC": "libx264",
+                "VIDEO_FILENAME_FORMAT": "default.%m%d%Y.mp4"
+            },
             "proxies": {
                 "http": "",
                 "https": ""
             },
             "auth": {
-                "youtube" : {
-                    "client_id" : "",
-                    "client_secret" : "",
-                    "refresh_token" : ""
+                "youtube": {
+                    "client_id": "",
+                    "client_secret": "",
+                    "refresh_token": "",
+                    "playlist_name": "default"
                 }
             },
             "alerts": {
-                "comment": "This is just the topic subscription name, not the entire URL",
+                "enabled": False,
                 "ntfy": "",
                 "repeated_hash_threshold": 10,
-                "escalation_points": [10, 50, 100, 500]
+                "escalation_points": [10, 50, 100, 500],
+                "repeated_hash_count": 0
             },
             "sun": {
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
                 "SUNSET_TIME_ADD": 60,
                 "TIME_OFFSET_HOURS": 0,
-                "URL": "https://www.timeanddate.com/sun/@34.0788,-107.6166"
+                "URL": ""
             },
             "files_and_folders": {
-                "LOG_FILE_NAME": "time_lapse.log",
+                "LOG_FILE_NAME": "timelapse.log",
                 "VALID_IMAGES_FILE": "valid_images.json",
-                "VLA_BASE": str(vla_base),
-                "VIDEO_FOLDER": os.path.join(vla_base, "video"),
-                "IMAGES_FOLDER": os.path.join(vla_base, "images"),
-                "LOGGING_FOLDER": os.path.join(vla_base, "logging"),
-                "AUDIO_FOLDER": os.path.join(vla_base, "audio"),
+                "PROJECT_BASE": str(project_base),
+                "VIDEO_FOLDER": os.path.join(project_base, "video"),
+                "IMAGES_FOLDER": os.path.join(project_base, "images"),
+                "LOGGING_FOLDER": os.path.join(project_base, "logging"),
+                "AUDIO_FOLDER": os.path.join(project_base, "audio")
             },
             "urls": {
-                "IMAGE_URL": "https://public.nrao.edu/wp-content/uploads/temp/vla_webcam_temp.jpg",
-                "WEBPAGE": "https://public.nrao.edu/vla-webcam/"
+                "IMAGE_URL": "",
+                "WEBPAGE": ""
+            },
+            "music": {
+                "enabled": False,
+                "pixabay_api_key": "",
+                "search_terms": [],
+                "min_duration": 60,
+                "preferred_genres": []
+            },
+            "tmux": {
+                "session_name": "hourglass-default",
+                "enable_split": True,
+                "log_pane_size": 20
+            },
+            "performance": {
+                "memory_limit_mb": 1024,
+                "batch_size": 100,
+                "parallel_downloads": 3,
+                "cache_images": True
             },
             "output_symbols": {
                 "GREEN_CIRCLE": "\U0001F7E2",
@@ -316,32 +354,82 @@ def load_config():
 config = load_config()
 
 if config:
-    PROXIES = config['proxies']
-    SUNRISE = config['sun']['SUNRISE']
-    SUNSET = config['sun']['SUNSET']
-    SUNSET_TIME_ADD = config['sun']['SUNSET_TIME_ADD']
-    SUN_URL = config['sun']['URL']
+    # Project settings
+    PROJECT_NAME = config.get('project', {}).get('name', 'default')
+    PROJECT_DESCRIPTION = config.get('project', {}).get('description', '')
     
-    VLA_BASE = config['files_and_folders']['VLA_BASE']
-    VIDEO_FOLDER = config['files_and_folders']['VIDEO_FOLDER']
-    IMAGES_FOLDER = config['files_and_folders']['IMAGES_FOLDER']
-    VALID_IMAGES_FILE = config['files_and_folders']['VALID_IMAGES_FILE']
+    # Capture settings
+    IMAGE_PATTERN = config.get('capture', {}).get('IMAGE_PATTERN', f'{PROJECT_NAME}.*.jpg')
+    FILENAME_FORMAT = config.get('capture', {}).get('FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.%H%M%S.jpg')
+    CAPTURE_INTERVAL = config.get('capture', {}).get('CAPTURE_INTERVAL', 30)
+    MAX_RETRIES = config.get('capture', {}).get('MAX_RETRIES', 3)
+    RETRY_DELAY = config.get('capture', {}).get('RETRY_DELAY', 5)
     
-    LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
-    AUDIO_FOLDER = config['files_and_folders']['AUDIO_FOLDER']
-    LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
+    # Video settings
+    VIDEO_FPS = config.get('video', {}).get('FPS', 10)
+    VIDEO_FORMAT = config.get('video', {}).get('OUTPUT_FORMAT', 'mp4')
+    VIDEO_CODEC = config.get('video', {}).get('CODEC', 'libx264')
+    VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
+    
+    # Network settings
+    PROXIES = config.get('proxies', {})
+    
+    # Sun/time settings
+    SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
+    SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
+    SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
+    SUN_URL = config.get('sun', {}).get('URL', '')
+    TIME_OFFSET_HOURS = config.get('sun', {}).get('TIME_OFFSET_HOURS', 0)
+    
+    # File and folder settings
+    PROJECT_BASE = config['files_and_folders'].get('PROJECT_BASE', os.path.join(Path.home(), 'HourGlass', PROJECT_NAME))
+    VIDEO_FOLDER = config['files_and_folders'].get('VIDEO_FOLDER', os.path.join(PROJECT_BASE, 'video'))
+    IMAGES_FOLDER = config['files_and_folders'].get('IMAGES_FOLDER', os.path.join(PROJECT_BASE, 'images'))
+    VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
+    LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
+    AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
+    LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
     LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
     
-    IMAGE_URL = config['urls']['IMAGE_URL']
-    WEBPAGE = config['urls']['WEBPAGE']
+    # URL settings
+    IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
+    WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
     
-    GREEN_CIRCLE = config['output_symbols']['GREEN_CIRCLE']
-    RED_CIRCLE = config['output_symbols']['RED_CIRCLE']
+    # Output symbols
+    GREEN_CIRCLE = config.get('output_symbols', {}).get('GREEN_CIRCLE', '\U0001F7E2')
+    RED_CIRCLE = config.get('output_symbols', {}).get('RED_CIRCLE', '\U0001F534')
     
-    USER_AGENTS = config['user_agents']
-
-    NTFY_TOPIC = config['alerts']['ntfy']
-    NTFY_URL = config['ntfy']
+    # User agents
+    USER_AGENTS = config.get('user_agents', [])
+    
+    # Alert settings
+    ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
+    NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
+    NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
+    
+    # Music settings
+    MUSIC_ENABLED = config.get('music', {}).get('enabled', False)
+    PIXABAY_API_KEY = config.get('music', {}).get('pixabay_api_key', '')
+    MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', [])
+    MUSIC_MIN_DURATION = config.get('music', {}).get('min_duration', 60)
+    MUSIC_GENRES = config.get('music', {}).get('preferred_genres', [])
+    
+    # YouTube settings
+    YOUTUBE_CLIENT_ID = config.get('auth', {}).get('youtube', {}).get('client_id', '')
+    YOUTUBE_CLIENT_SECRET = config.get('auth', {}).get('youtube', {}).get('client_secret', '')
+    YOUTUBE_REFRESH_TOKEN = config.get('auth', {}).get('youtube', {}).get('refresh_token', '')
+    YOUTUBE_PLAYLIST_NAME = config.get('auth', {}).get('youtube', {}).get('playlist_name', PROJECT_NAME)
+    
+    # Tmux settings
+    TMUX_SESSION_NAME = config.get('tmux', {}).get('session_name', f'hourglass-{PROJECT_NAME.lower()}')
+    TMUX_ENABLE_SPLIT = config.get('tmux', {}).get('enable_split', True)
+    TMUX_LOG_PANE_SIZE = config.get('tmux', {}).get('log_pane_size', 20)
+    
+    # Performance settings
+    MEMORY_LIMIT_MB = config.get('performance', {}).get('memory_limit_mb', 1024)
+    BATCH_SIZE = config.get('performance', {}).get('batch_size', 100)
+    PARALLEL_DOWNLOADS = config.get('performance', {}).get('parallel_downloads', 3)
+    CACHE_IMAGES = config.get('performance', {}).get('cache_images', True)
 
     
     today_short_date = datetime.now().strftime("%m%d%Y")
@@ -377,37 +465,83 @@ def reload_config():
     - This function assumes that all global variables are already defined.
     - It uses the same load_config() function used for initial configuration loading.
     """
-    global config, PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER
-    global LOGGING_FOLDER, AUDIO_FOLDER, LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE
-    global RED_CIRCLE, USER_AGENTS, NTFY_TOPIC, NTFY_URL, today_short_date
+    global config, PROJECT_NAME, PROJECT_DESCRIPTION, IMAGE_PATTERN, FILENAME_FORMAT, CAPTURE_INTERVAL
+    global MAX_RETRIES, RETRY_DELAY, VIDEO_FPS, VIDEO_FORMAT, VIDEO_CODEC, VIDEO_FILENAME_FORMAT
+    global PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, TIME_OFFSET_HOURS
+    global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
+    global LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE, RED_CIRCLE
+    global USER_AGENTS, ALERTS_ENABLED, NTFY_TOPIC, NTFY_URL, today_short_date
+    global MUSIC_ENABLED, PIXABAY_API_KEY, MUSIC_SEARCH_TERMS, MUSIC_MIN_DURATION, MUSIC_GENRES
+    global YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN, YOUTUBE_PLAYLIST_NAME
+    global TMUX_SESSION_NAME, TMUX_ENABLE_SPLIT, TMUX_LOG_PANE_SIZE
+    global MEMORY_LIMIT_MB, BATCH_SIZE, PARALLEL_DOWNLOADS, CACHE_IMAGES, VALID_IMAGES_FILE
 
     logging.info("Reloading configuration")
     config = load_config()
     if config:
-        PROXIES = config['proxies']
-        SUNRISE = config['sun']['SUNRISE']
-        SUNSET = config['sun']['SUNSET']
-        SUNSET_TIME_ADD = config['sun']['SUNSET_TIME_ADD']
-        SUN_URL = config['sun']['URL']
+        # Reload all configuration variables
+        PROJECT_NAME = config.get('project', {}).get('name', 'default')
+        PROJECT_DESCRIPTION = config.get('project', {}).get('description', '')
         
-        VLA_BASE = config['files_and_folders']['VLA_BASE']
-        VIDEO_FOLDER = config['files_and_folders']['VIDEO_FOLDER']
-        IMAGES_FOLDER = config['files_and_folders']['IMAGES_FOLDER']
-        LOGGING_FOLDER = config['files_and_folders']['LOGGING_FOLDER']
-        AUDIO_FOLDER = config['files_and_folders']['AUDIO_FOLDER']
-        LOG_FILE_NAME = config['files_and_folders']['LOG_FILE_NAME']
+        IMAGE_PATTERN = config.get('capture', {}).get('IMAGE_PATTERN', f'{PROJECT_NAME}.*.jpg')
+        FILENAME_FORMAT = config.get('capture', {}).get('FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.%H%M%S.jpg')
+        CAPTURE_INTERVAL = config.get('capture', {}).get('CAPTURE_INTERVAL', 30)
+        MAX_RETRIES = config.get('capture', {}).get('MAX_RETRIES', 3)
+        RETRY_DELAY = config.get('capture', {}).get('RETRY_DELAY', 5)
+        
+        VIDEO_FPS = config.get('video', {}).get('FPS', 10)
+        VIDEO_FORMAT = config.get('video', {}).get('OUTPUT_FORMAT', 'mp4')
+        VIDEO_CODEC = config.get('video', {}).get('CODEC', 'libx264')
+        VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
+        
+        PROXIES = config.get('proxies', {})
+        
+        SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
+        SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
+        SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
+        SUN_URL = config.get('sun', {}).get('URL', '')
+        TIME_OFFSET_HOURS = config.get('sun', {}).get('TIME_OFFSET_HOURS', 0)
+        
+        PROJECT_BASE = config['files_and_folders'].get('PROJECT_BASE', os.path.join(Path.home(), 'HourGlass', PROJECT_NAME))
+        VIDEO_FOLDER = config['files_and_folders'].get('VIDEO_FOLDER', os.path.join(PROJECT_BASE, 'video'))
+        IMAGES_FOLDER = config['files_and_folders'].get('IMAGES_FOLDER', os.path.join(PROJECT_BASE, 'images'))
+        VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
+        LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
+        AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
+        LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
         LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
         
-        IMAGE_URL = config['urls']['IMAGE_URL']
-        WEBPAGE = config['urls']['WEBPAGE']
+        IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
+        WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
         
-        GREEN_CIRCLE = config['output_symbols']['GREEN_CIRCLE']
-        RED_CIRCLE = config['output_symbols']['RED_CIRCLE']
+        GREEN_CIRCLE = config.get('output_symbols', {}).get('GREEN_CIRCLE', '\U0001F7E2')
+        RED_CIRCLE = config.get('output_symbols', {}).get('RED_CIRCLE', '\U0001F534')
         
-        USER_AGENTS = config['user_agents']
-
-        NTFY_TOPIC = config['alerts']['ntfy']
-        NTFY_URL = config['ntfy']
+        USER_AGENTS = config.get('user_agents', [])
+        
+        ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
+        NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
+        NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
+        
+        MUSIC_ENABLED = config.get('music', {}).get('enabled', False)
+        PIXABAY_API_KEY = config.get('music', {}).get('pixabay_api_key', '')
+        MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', [])
+        MUSIC_MIN_DURATION = config.get('music', {}).get('min_duration', 60)
+        MUSIC_GENRES = config.get('music', {}).get('preferred_genres', [])
+        
+        YOUTUBE_CLIENT_ID = config.get('auth', {}).get('youtube', {}).get('client_id', '')
+        YOUTUBE_CLIENT_SECRET = config.get('auth', {}).get('youtube', {}).get('client_secret', '')
+        YOUTUBE_REFRESH_TOKEN = config.get('auth', {}).get('youtube', {}).get('refresh_token', '')
+        YOUTUBE_PLAYLIST_NAME = config.get('auth', {}).get('youtube', {}).get('playlist_name', PROJECT_NAME)
+        
+        TMUX_SESSION_NAME = config.get('tmux', {}).get('session_name', f'hourglass-{PROJECT_NAME.lower()}')
+        TMUX_ENABLE_SPLIT = config.get('tmux', {}).get('enable_split', True)
+        TMUX_LOG_PANE_SIZE = config.get('tmux', {}).get('log_pane_size', 20)
+        
+        MEMORY_LIMIT_MB = config.get('performance', {}).get('memory_limit_mb', 1024)
+        BATCH_SIZE = config.get('performance', {}).get('batch_size', 100)
+        PARALLEL_DOWNLOADS = config.get('performance', {}).get('parallel_downloads', 3)
+        CACHE_IMAGES = config.get('performance', {}).get('cache_images', True)
         
         today_short_date = datetime.now().strftime("%m%d%Y")
 

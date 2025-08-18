@@ -1,6 +1,28 @@
 #!/bin/bash
 # setup.sh
 
+# Check Python version
+check_python_version() {
+    if command -v python3 &> /dev/null; then
+        PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+        MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+        
+        if [ "$MAJOR" -eq 3 ] && [ "$MINOR" -eq 12 ]; then
+            echo -e "[✓]\tPython 3.12 detected"
+            return 0
+        else
+            echo -e "[!]\tPython $PYTHON_VERSION detected. This project requires Python 3.12"
+            echo -e "[i]\tPython 3.13+ has compatibility issues with some dependencies"
+            echo -e "[i]\tPlease install Python 3.12 and try again"
+            return 1
+        fi
+    else
+        echo -e "[!]\tPython 3 not found"
+        return 1
+    fi
+}
+
 # Function to check if command exists
 check_command() {
     if ! command -v $1 &> /dev/null; then
@@ -70,6 +92,12 @@ elif [ "$(uname)" == "Darwin" ]; then
     install_macos
 else
     echo -e "[!]\tYour system is not supported by this script."
+    exit 1
+fi
+
+# Verify Python version before proceeding
+if ! check_python_version; then
+    echo -e "[!]\tSetup cannot continue without Python 3.12"
     exit 1
 fi
 

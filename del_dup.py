@@ -21,14 +21,17 @@ def check_and_remove_duplicate_images(folder_path):
         return []
 
     # Get all jpg files in the folder
-    image_files = sorted(folder_path.glob('vla.*.jpg'))
+    from timelapse_config import IMAGE_PATTERN
+    image_files = sorted(folder_path.glob(IMAGE_PATTERN))
     
     # Filter and sort files based on the specific naming pattern
     valid_files = []
     for file in image_files:
         try:
             # Parse the date and time from the filename
-            datetime.strptime(file.stem, 'vla.%d%m%Y.%H%M%S')
+            # This will need to be adapted based on the project's filename format
+            from timelapse_config import PROJECT_NAME
+            datetime.strptime(file.stem, f'{PROJECT_NAME}.%d%m%Y.%H%M%S')
             valid_files.append(file)
         except ValueError:
             # Skip files that don't match the expected format

@@ -1,7 +1,8 @@
         # # Upload to YouTube
         # date_obj = datetime.now()
         # formatted_date = date_obj.strftime("%m/%d/%Y")
-        # video_title = f"VLA {formatted_date}"
+        # from timelapse_config import PROJECT_NAME
+        # video_title = f"{PROJECT_NAME} {formatted_date}"
         # video_description = f"@NRAO Very Large Array Time Lapse for {formatted_date}"
         
         # video_id, youtube_client = upload_to_youtube(video_path, video_title, video_description)
@@ -10,7 +11,7 @@
         #     message_processor(f"Video uploaded to YouTube ID: {video_id}", ntfy=True)
             
         #     # Now, add the video to the playlist
-        #     success, message = add_video_to_playlist(youtube_client, video_id, "VLA")
+        #     success, message = add_video_to_playlist(youtube_client, video_id)
         #     if success:
         #         message_processor(message, ntfy=True)
         #     else:
