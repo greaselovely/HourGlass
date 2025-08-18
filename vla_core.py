@@ -746,7 +746,7 @@ def calculate_video_duration(num_images, fps) -> int:
 
 def single_song_download(AUDIO_FOLDER, max_attempts=3):
     """
-    Downloads a random song and tests its usability.
+    Downloads a random song from Pixabay and tests its usability.
 
     This function attempts to download a song up to 'max_attempts' times,
     testing each download to ensure it can be used by MoviePy.
@@ -767,34 +767,50 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
         try:
             user_agent = choice(USER_AGENTS)
             headers = {"User-Agent": user_agent}
-            url = "https://soundtracks.loudly.com/songs"
-            r = requests.get(url, headers=headers)
-            r.raise_for_status()
             
-            last_page = r.json().get('pagination_data', {}).get('last_page', 20)
-            page = choice(range(1, last_page + 1))
-            url = f"https://soundtracks.loudly.com/songs?page={page}"
-            r = requests.get(url, headers=headers)
+            # Use Pixabay's search API for background music
+            search_terms = ["background music", "ambient", "lofi", "calm", "upbeat", "vlog", "corporate"]
+            search_term = choice(search_terms)
+            
+            # First, get the list of available music
+            page = choice(range(1, 10))  # Choose from first 10 pages
+            api_url = f"https://pixabay.com/api/v2/music/search/{search_term.replace(' ', '%20')}/?page={page}"
+            
+            # Try the bootstrap URL approach instead
+            bootstrap_url = "https://pixabay.com/bootstrap/96160d32e87ceefc43666f72d4c19189e61368cbc3500f1ab463d18b68b266b3.json"
+            
+            message_processor(f"Fetching music list from Pixabay (attempt {attempt + 1})", "info")
+            r = requests.get(bootstrap_url, headers=headers)
             r.raise_for_status()
             
             data = r.json()
-            songs = data.get('items', [])
-            if not songs:
-                message_processor("No songs found.", "error")
+            results = data.get('page', {}).get('results', [])
+            
+            if not results:
+                message_processor("No songs found in response.", "error")
                 continue
             
-            song = choice(songs)
-            song_duration = song.get('duration', 0)
-            song_download_path = song.get('music_file_path')
-            if not song_download_path:
-                message_processor("Song download path not found.", "error")
+            # Select a random song from the results
+            song = choice(results)
+            
+            # Extract song information
+            song_src = song.get('sources', {}).get('src')
+            song_duration = song.get('duration', 0)  # Duration in seconds
+            song_name = song.get('name', 'Unknown Song')
+            
+            if not song_src:
+                message_processor("Song source URL not found.", "error")
                 continue
             
-            r = requests.get(song_download_path)
+            message_processor(f"Downloading: {song_name[:50]}... ({song_duration}s)", "download")
+            
+            # Download the audio file
+            r = requests.get(song_src, headers=headers)
             r.raise_for_status()
             
-            song_name = song.get('title', 'Unknown Song').replace('/', '_')
-            audio_name = f"{song_name}.mp3"
+            # Clean filename for saving
+            safe_name = re.sub(r'[^\w\s-]', '', song_name)[:50]
+            audio_name = f"{safe_name}.mp3"
             full_audio_path = os.path.join(AUDIO_FOLDER, audio_name)
             
             with open(full_audio_path, 'wb') as f:
@@ -817,6 +833,8 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
         
         except requests.RequestException as e:
             message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
+        except (KeyError, ValueError) as e:
+            message_processor(f"Error parsing response data: {e}", "error")
     
     message_processor(f"Failed to download a usable audio file after {max_attempts} attempts.", "error")
     return None, None
