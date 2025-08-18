@@ -147,33 +147,9 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         duration_threshold = calculate_video_duration(len(valid_files), fps)
         message_processor(f"Video Duration: {duration_threshold/1000:.1f} seconds", print_me=True)
         
-        # Audio download with monitoring (optional)
+        # Skip audio download for now - music site has changed
         final_song = None
-        try:
-            message_processor("Attempting to download audio...")
-            audio_result, audio_metrics = monitor_resource_usage(
-                audio_download, 
-                duration_threshold, 
-                run_audio_folder
-            )
-            
-            if audio_result:
-                # Prepare final audio
-                if len(audio_result) >= 2:
-                    message_processor("Concatenating multiple audio tracks")
-                    final_song = concatenate_songs(audio_result)
-                else:
-                    # Handle single audio file - check if it's a tuple or just a path
-                    if isinstance(audio_result[0], tuple) and len(audio_result[0]) > 0:
-                        final_song = audio_result[0][0]  # Extract path from tuple
-                    else:
-                        final_song = audio_result[0]  # Use the result directly
-                    message_processor("Using single audio track")
-            else:
-                message_processor("Audio download failed. Proceeding without audio.", "warning")
-        except Exception as e:
-            message_processor(f"Audio download error: {e}. Proceeding without audio.", "warning")
-            final_song = None
+        message_processor("Skipping audio download - creating video without music", "info")
         
         # Create time-lapse video (simplified without black frame for now)
         message_processor("Creating Time-Lapse Video")
