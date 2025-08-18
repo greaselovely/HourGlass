@@ -100,7 +100,7 @@ def prompt_user_for_run_folder_selection(folders):
         except ValueError:
             print("Please enter a valid number or press Enter for default")
 
-def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset=0):
+def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset=0, debug=False):
     """
     Execute the main sequence of operations for creating a time-lapse video.
     Enhanced with memory management and performance monitoring.
@@ -154,7 +154,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             audio_result, audio_metrics = monitor_resource_usage(
                 audio_download, 
                 duration_threshold, 
-                run_audio_folder
+                run_audio_folder,
+                debug
             )
             
             if audio_result:
@@ -301,6 +302,8 @@ def main():
                        help="Bypass sunrise/sunset time checking (for testing)")
     parser.add_argument("--force-prompt", action="store_true",
                        help="Force folder selection prompt in movie mode")
+    parser.add_argument("--debug", action="store_true",
+                       help="Enable debug mode (saves Pixabay HTML/JSON responses)")
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
@@ -409,7 +412,7 @@ def main():
         video_filename = f"VLA.{folder_date}.mp4"
         video_path = os.path.join(VIDEO_FOLDER, video_filename)
         
-        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
+        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
         if health_monitor:
             health_monitor.stop_monitoring()
         return
@@ -513,7 +516,7 @@ def main():
         def enhanced_main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
             """Wrapper for main_sequence with health monitoring updates."""
             try:
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
                 if health_monitor:
                     health_monitor.update_performance_stats('video_created')
             except Exception as e:
@@ -538,12 +541,12 @@ def main():
         message_processor("Keyboard interrupt received", "warning", ntfy=True)
         try:
             message_processor("Processing existing images into video...")
-            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
+            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
         except Exception as e:
             message_processor(f"Error processing images to video: {e}", "error")
             try:
                 # Fallback attempt
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
             except Exception as fallback_error:
                 message_processor(f"Fallback video creation failed: {fallback_error}", "error", ntfy=True)
         finally:

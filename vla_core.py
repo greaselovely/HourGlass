@@ -10,6 +10,7 @@ import logging
 import hashlib
 import textwrap
 import requests
+import cloudscraper
 import numpy as np
 from time import sleep
 from pathlib import Path
@@ -744,7 +745,7 @@ def calculate_video_duration(num_images, fps) -> int:
     duration_ms = int(duration_sec * 1000)
     return duration_ms
 
-def single_song_download(AUDIO_FOLDER, max_attempts=3):
+def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False):
     """
     Downloads a random song from Pixabay and tests its usability.
 
@@ -754,6 +755,7 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
     Parameters:
     - AUDIO_FOLDER (str): Path to the folder where audio files will be saved.
     - max_attempts (int): Maximum number of download attempts. Defaults to 3.
+    - debug (bool): If True, save HTML/JSON responses for debugging.
 
     Returns:
     - tuple: A tuple containing the path to the downloaded audio file and its duration,
@@ -763,28 +765,128 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
     The function prints messages to the console indicating the status of each download
     and any errors encountered.
     """
+    # Create temp folder for debugging HTML responses if debug mode is enabled
+    if debug:
+        temp_folder = Path("pixabay_debug")
+        temp_folder.mkdir(exist_ok=True)
+    
     for attempt in range(max_attempts):
         try:
-            user_agent = choice(USER_AGENTS)
-            headers = {"User-Agent": user_agent}
+            # Add delay between attempts to avoid rate limiting
+            if attempt > 0:
+                delay = 10 + attempt * 5  # Progressive delay: 15s, 20s
+                message_processor(f"Waiting {delay} seconds before retry...", "info")
+                sleep(delay)
             
-            # Use Pixabay's search API for background music
-            search_terms = ["background music", "ambient", "lofi", "calm", "upbeat", "vlog", "corporate"]
-            search_term = choice(search_terms)
+            # Use cloudscraper to bypass Cloudflare
+            # It handles user agents and headers automatically
+            session = cloudscraper.create_scraper(
+                browser={
+                    'browser': 'chrome',
+                    'platform': 'darwin',
+                    'desktop': True
+                }
+            )
             
-            # First, get the list of available music
-            page = choice(range(1, 10))  # Choose from first 10 pages
-            api_url = f"https://pixabay.com/api/v2/music/search/{search_term.replace(' ', '%20')}/?page={page}"
+            # Step 1: Get page 1 HTML to extract bootstrap URL and total pages
+            search_term = "background music"
+            page1_url = f"https://pixabay.com/music/search/{search_term.replace(' ', '%20')}/"
             
-            # Try the bootstrap URL approach instead
-            bootstrap_url = "https://pixabay.com/bootstrap/96160d32e87ceefc43666f72d4c19189e61368cbc3500f1ab463d18b68b266b3.json"
+            message_processor(f"Fetching Pixabay music catalog for '{search_term}' (attempt {attempt + 1})", "info")
+            message_processor(f"URL: {page1_url}", "info")
+            r = session.get(page1_url)
             
-            message_processor(f"Fetching music list from Pixabay (attempt {attempt + 1})", "info")
-            r = requests.get(bootstrap_url, headers=headers)
+            # Save HTML response for debugging if enabled
+            if debug:
+                html_file = temp_folder / f"page1_attempt{attempt + 1}_{r.status_code}.html"
+                # r.text should handle decompression automatically
+                with open(html_file, 'w', encoding='utf-8') as f:
+                    f.write(r.text)
+                message_processor(f"Saved HTML to: {html_file}", "info")
+            
             r.raise_for_status()
             
-            data = r.json()
-            results = data.get('page', {}).get('results', [])
+            # Extract the bootstrap URL from the HTML
+            html_content = r.text
+            bootstrap_match = re.search(r"window\.__BOOTSTRAP_URL__\s*=\s*'([^']+)'", html_content)
+            
+            if not bootstrap_match:
+                message_processor("Could not find bootstrap URL in HTML", "error")
+                continue
+                
+            bootstrap_path = bootstrap_match.group(1)
+            bootstrap_url = f"https://pixabay.com{bootstrap_path}"
+            
+            # Step 2: Fetch the bootstrap JSON to get total pages
+            message_processor("Fetching catalog metadata", "info")
+            message_processor(f"URL: {bootstrap_url}", "info")
+            sleep(10)  # 10 second delay between requests
+            r = session.get(bootstrap_url)
+            
+            # Save JSON response for debugging if enabled
+            if debug:
+                json_file = temp_folder / f"bootstrap_page1_attempt{attempt + 1}_{r.status_code}.json"
+                with open(json_file, 'w', encoding='utf-8') as f:
+                    f.write(r.text)
+                message_processor(f"Saved JSON to: {json_file}", "info")
+            
+            r.raise_for_status()
+            
+            initial_data = r.json()
+            total_pages = initial_data.get('page', {}).get('pages', 1)
+            message_processor(f"Found {total_pages} pages of music available", "info")
+            
+            # Step 3: Select a random page
+            selected_page = choice(range(1, min(total_pages + 1, 1000)))  # Cap at 1000 for safety
+            
+            # Step 4: If not page 1, fetch the selected page
+            if selected_page > 1:
+                page_url = f"https://pixabay.com/music/search/{search_term.replace(' ', '%20')}/?pagi={selected_page}"
+                message_processor(f"Fetching page {selected_page} of {total_pages}", "info")
+                message_processor(f"URL: {page_url}", "info")
+                
+                sleep(10)  # 10 second delay between requests
+                r = session.get(page_url)
+                
+                # Save HTML response for debugging if enabled
+                if debug:
+                    html_file = temp_folder / f"page{selected_page}_attempt{attempt + 1}_{r.status_code}.html"
+                    with open(html_file, 'w', encoding='utf-8') as f:
+                        f.write(r.text)
+                    message_processor(f"Saved HTML to: {html_file}", "info")
+                
+                r.raise_for_status()
+                
+                # Extract bootstrap URL from this page
+                html_content = r.text
+                bootstrap_match = re.search(r"window\.__BOOTSTRAP_URL__\s*=\s*'([^']+)'", html_content)
+                
+                if bootstrap_match:
+                    bootstrap_path = bootstrap_match.group(1)
+                    bootstrap_url = f"https://pixabay.com{bootstrap_path}"
+                    
+                    # Fetch the bootstrap JSON for this page
+                    message_processor(f"Fetching page {selected_page} bootstrap data", "info")
+                    message_processor(f"URL: {bootstrap_url}", "info")
+                    sleep(10)  # 10 second delay between requests
+                    r = session.get(bootstrap_url)
+                    
+                    # Save JSON response for debugging if enabled
+                    if debug:
+                        json_file = temp_folder / f"bootstrap_page{selected_page}_attempt{attempt + 1}_{r.status_code}.json"
+                        with open(json_file, 'w', encoding='utf-8') as f:
+                            f.write(r.text)
+                        message_processor(f"Saved JSON to: {json_file}", "info")
+                    
+                    r.raise_for_status()
+                    page_data = r.json()
+                    results = page_data.get('page', {}).get('results', [])
+                else:
+                    message_processor(f"Could not find bootstrap URL for page {selected_page}, using page 1", "warning")
+                    results = initial_data.get('page', {}).get('results', [])
+            else:
+                results = initial_data.get('page', {}).get('results', [])
+                message_processor("Using page 1", "info")
             
             if not results:
                 message_processor("No songs found in response.", "error")
@@ -803,9 +905,11 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
                 continue
             
             message_processor(f"Downloading: {song_name[:50]}... ({song_duration}s)", "download")
+            message_processor(f"URL: {song_src}", "info")
             
             # Download the audio file
-            r = requests.get(song_src, headers=headers)
+            sleep(10)  # 10 second delay before downloading
+            r = session.get(song_src)
             r.raise_for_status()
             
             # Clean filename for saving
@@ -831,6 +935,11 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
                 message_processor(f"Removed unusable file: {audio_name}")
                 continue  # Try downloading again
         
+        except requests.HTTPError as e:
+            if e.response.status_code == 403:
+                message_processor(f"Access forbidden (403). Pixabay may be rate limiting. Retrying...", "warning")
+            else:
+                message_processor(f"HTTP error occurred:\n[!]\t{e}", "error")
         except requests.RequestException as e:
             message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
         except (KeyError, ValueError) as e:
@@ -839,13 +948,14 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3):
     message_processor(f"Failed to download a usable audio file after {max_attempts} attempts.", "error")
     return None, None
 
-def audio_download(video_duration, AUDIO_FOLDER) -> list:
+def audio_download(video_duration, AUDIO_FOLDER, debug=False) -> list:
     """
     Downloads multiple songs, ensuring their total duration covers the video duration.
 
     Args:
         video_duration (int): Required total audio duration in milliseconds.
         AUDIO_FOLDER (str or Path): Directory to save the downloaded audio files.
+        debug (bool): If True, save HTML/JSON responses for debugging.
 
     Returns:
         list: List of tuples, each containing the path to a downloaded audio file and its duration in seconds.
@@ -859,7 +969,7 @@ def audio_download(video_duration, AUDIO_FOLDER) -> list:
     message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video", print_me=False)
 
     while total_duration < video_duration / 1000 and attempts < max_attempts:
-        song_path, song_duration_ms = single_song_download(AUDIO_FOLDER)
+        song_path, song_duration_ms = single_song_download(AUDIO_FOLDER, debug=debug)
         if song_path and song_duration_ms:
             song_duration_sec = song_duration_ms / 1000
             songs.append((song_path, song_duration_sec))
@@ -1051,7 +1161,9 @@ def sun_schedule(SUN_URL):
         BeautifulSoup object or None: Parsed HTML content if successful, None otherwise.
     """
     try:
-        response = requests.get(SUN_URL)
+        user_agent = choice(USER_AGENTS)
+        headers = {"User-Agent": user_agent}
+        response = requests.get(SUN_URL, headers=headers)
         response.raise_for_status()  # Raise an HTTPError for bad responses
         html_content = response.text
     except requests.RequestException as e:
