@@ -1,0 +1,25 @@
+[project]
+name = "HourGlass"
+version = "2.0.0"
+description = "HourGlass - time lapse capture system"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = {text = "MIT"}
+
+[project.urls]
+Repository = "https://github.com/greaselovely/HourGlass"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["timelapse_core", "timelapse_config", "timelapse_loop", "timelapse_upload", "timelapse_validator"]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

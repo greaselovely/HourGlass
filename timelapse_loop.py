@@ -298,9 +298,9 @@ class VLAMainLoop:
         logging.info(summary)
 
 
-def create_vla_main_loop(config, user_agents, proxies, webpage, image_url, time_offset=0):
+def create_timelapse_main_loop(config, user_agents, proxies, webpage, image_url, time_offset=0):
     """
-    Factory function to create a configured VLAMainLoop instance.
+    Factory function to create a configured TimelapseMainLoop instance.
     
     Args:
         config: Application configuration
@@ -310,9 +310,9 @@ def create_vla_main_loop(config, user_agents, proxies, webpage, image_url, time_
         image_url: Image URL for downloading
         
     Returns:
-        VLAMainLoop: Configured main loop instance
+        TimelapseMainLoop: Configured main loop instance
     """
-    return VLAMainLoop(config, user_agents, proxies, webpage, image_url, time_offset=time_offset)
+    return TimelapseMainLoop(config, user_agents, proxies, webpage, image_url, time_offset=time_offset)
 
 
 

@@ -9,8 +9,8 @@ import uuid
 
 def setup_logging():
     # Set up the log directory in the user's home directory
-    home_directory = Path.home()
-    log_dir = home_directory / 'VLA' / 'logging'
+    from timelapse_config import LOGGING_FOLDER
+    log_dir = Path(LOGGING_FOLDER)
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Set the log file path
@@ -45,7 +45,8 @@ def create_base_image(path):
     # Use the default font
     font = ImageFont.load_default()
 
-    text = "VLA Base Test Image"
+    from timelapse_config import PROJECT_NAME
+    text = f"{PROJECT_NAME} Base Test Image"
     target_width = img_width * 2/3  # Target width is 2/3 of the image width
 
     # Find the right font size

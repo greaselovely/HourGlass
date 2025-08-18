@@ -1,4 +1,4 @@
-# vla_core.py
+# timelapse_core.py
 import re
 import os
 import cv2
@@ -24,7 +24,7 @@ from datetime import datetime
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 
-from vla_config import *
+from timelapse_config import *
 
 
 class CustomLogger(ProgressBarLogger):
@@ -109,7 +109,7 @@ class ImageDownloader:
 
     def get_last_image_filename(self):
         """Get the filename of the most recent image."""
-        image_files = sorted(self.out_path.glob('vla.*.jpg'))
+        image_files = sorted(self.out_path.glob(IMAGE_PATTERN))
         return image_files[-1].name if image_files else None
 
     def get_last_image_hash(self):
@@ -278,7 +278,7 @@ class ImageDownloader:
                     
                     # Save the image
                     today_short_time = (datetime.now() + timedelta(hours=self.time_offset)).strftime("%H%M%S")
-                    filename = f'vla.{today_short_date}.{today_short_time}.jpg'
+                    filename = datetime.now().strftime(FILENAME_FORMAT)
                     
                     with open(self.out_path / filename, 'wb') as f:
                         f.write(image_content)
@@ -549,10 +549,10 @@ def log_jamming(log_message):
         str: The formatted log message.
 
     Example of use:
-    log_jamming("Session Created: {'mailchimp_landing_site': 'https%3A%2F%2Fpublic.nrao.edu%2Fvla-webcam%2F'}, ValuesView({...})")
+    log_jamming("Session Created: {'mailchimp_landing_site': 'webcam_url'}, ValuesView({...})")
 
     This will return a formatted string that looks like this in the output (example):
-    2024-03-30 19:36:24,025 - INFO - Session Created: {'mailchimp_landing_site': 'https%3A%2F%2Fpublic.nrao.edu%2Fvla-
+    2024-03-30 19:36:24,025 - INFO - Session Created: {'mailchimp_landing_site': 'webcam_url
                                 webcam%2F'}, ValuesView({'User-Agent': 'Mozilla/5.0
                                 (iPhone; CPU iPhone OS 15_0 like Mac OS X)
                                 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0

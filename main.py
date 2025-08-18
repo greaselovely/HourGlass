@@ -3,15 +3,15 @@
 import sys
 import cursor
 import argparse
-from vla_core import *
-from vla_config import *
-from vla_core import CustomLogger, ImageDownloader
-from vla_loop import create_vla_main_loop
+from timelapse_core import *
+from timelapse_config import *
+from timelapse_core import CustomLogger, ImageDownloader
+from timelapse_loop import create_timelapse_main_loop
 from config_validator import ConfigValidator
 from health_monitor import create_health_monitor
 from config_validator import validate_config_quick
 from moviepy.editor import ImageSequenceClip, AudioFileClip
-from vla_validator import validate_images as validate_images_fast
+from timelapse_validator import validate_images as validate_images_fast
 from memory_optimizer import memory_managed_operation, monitor_resource_usage
 
 
@@ -291,7 +291,7 @@ def main():
     global health_monitor
     
     # ===== COMMAND LINE ARGUMENTS - MOVED UP FIRST =====
-    parser = argparse.ArgumentParser(description="VLA Time Lapse Creator - Operation Telescope Enhanced")
+    parser = argparse.ArgumentParser(description="HourGlass Timelapse System - Automated Webcam Capture")
     parser.add_argument("-m", "--movie", action="store_true", 
                        help="Generate movie only without capturing new images")
     parser.add_argument("--health", action="store_true", 
@@ -321,13 +321,13 @@ def main():
     
     # Note: Full health monitoring will start later and provide detailed status
 
-    # Setup logging with rotation (from vla_config.py)
+    # Setup logging with rotation (from timelapse_config.py)
     if not setup_logging(config):
         message_processor("Failed to set up logging. Exiting.", "error")
         return
 
     # ===== DIRECTORY SETUP =====
-    for folder in [VLA_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER]:
+    for folder in [PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER]:
         os.makedirs(folder, exist_ok=True)
 
     # ===== HEALTH MONITORING INITIALIZATION =====
@@ -380,7 +380,7 @@ def main():
     run_valid_images_file = os.path.join(run_images_folder, VALID_IMAGES_FILE)
     run_audio_folder = os.path.join(AUDIO_FOLDER, run_id)
 
-    video_filename = f"VLA.{datetime.now().strftime('%m%d%Y')}.mp4"
+    video_filename = datetime.now().strftime(VIDEO_FILENAME_FORMAT)
     video_path = os.path.join(VIDEO_FOLDER, video_filename)
 
     for folder in [run_images_folder, VIDEO_FOLDER, run_audio_folder]:
@@ -409,7 +409,7 @@ def main():
         
         # Use the date from the selected folder for the video filename
         folder_date = selected_folder_info['date_obj'].strftime('%m%d%Y')
-        video_filename = f"VLA.{folder_date}.mp4"
+        video_filename = f"{PROJECT_NAME}.{folder_date}.mp4"
         video_path = os.path.join(VIDEO_FOLDER, video_filename)
         
         main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
@@ -509,8 +509,8 @@ def main():
         # ===== ROBUST MAIN LOOP =====
         message_processor("Awake and Running", ntfy=True, print_me=True)
         
-        # Create and run the VLA main loop
-        vla_loop = create_vla_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL, time_offset=time_offset)
+        # Create and run the HourGlass main loop
+        timelapse_loop = create_timelapse_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL, time_offset=time_offset)
         
         # Enhanced main loop with health monitoring integration
         def enhanced_main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
@@ -524,8 +524,8 @@ def main():
                     health_monitor.update_performance_stats('errors_encountered')
                 raise e
         
-        # Run the VLA loop
-        vla_loop.run_main_loop(
+        # Run the timelapse loop
+        timelapse_loop.run_main_loop(
             downloader=downloader,
             run_images_folder=run_images_folder,
             target_hour=TARGET_HOUR,

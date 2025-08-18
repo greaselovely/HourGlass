@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List
 from datetime import datetime
 from threading import Thread, Event
-from vla_core import message_processor
+from timelapse_core import message_processor
 from dataclasses import dataclass, asdict
 
 
@@ -25,7 +25,7 @@ class HealthMetric:
 
 class HealthMonitor:
     """
-    Comprehensive system health monitoring for VLA operations.
+    Comprehensive system health monitoring for timelapse operations.
     
     Monitors:
     - Disk space
@@ -42,7 +42,7 @@ class HealthMonitor:
         Initialize health monitor.
         
         Args:
-            config: VLA configuration dictionary
+            config: Timelapse configuration dictionary
             check_interval: Seconds between health checks
         """
         self.config = config
@@ -169,12 +169,12 @@ class HealthMonitor:
         return health_report
     
     def _check_disk_space(self) -> List[HealthMetric]:
-        """Check disk space for VLA directories."""
+        """Check disk space for project directories."""
         metrics = []
         
         try:
-            vla_base = self.config.get('files_and_folders', {}).get('VLA_BASE', '/')
-            disk_usage = psutil.disk_usage(vla_base)
+            project_base = self.config.get('files_and_folders', {}).get('PROJECT_BASE', '/')
+            disk_usage = psutil.disk_usage(project_base)
             
             free_gb = disk_usage.free / (1024**3)
             used_percent = (disk_usage.used / disk_usage.total) * 100

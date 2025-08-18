@@ -1,4 +1,4 @@
-# vla_upload.py
+# timelapse_upload.py
 
 import os
 import json
@@ -9,7 +9,7 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
-from vla_config import config
+from timelapse_config import config
 
 def get_youtube_credentials():
     """
@@ -105,7 +105,7 @@ def upload_to_youtube(video_path, title, description, category_id="28", privacy_
         logging.error(f"An error occurred during upload: {str(e)}")
         return None, None
 
-def add_video_to_playlist(youtube, video_id, playlist_name="VLA"):
+def add_video_to_playlist(youtube, video_id, playlist_name=None):
     """
     Add a video to a specified YouTube playlist.
 
@@ -115,7 +115,7 @@ def add_video_to_playlist(youtube, video_id, playlist_name="VLA"):
     Args:
         youtube (googleapiclient.discovery.Resource): The YouTube API client.
         video_id (str): The ID of the video to add to the playlist.
-        playlist_name (str, optional): The name of the playlist to add the video to. Defaults to "VLA".
+        playlist_name (str, optional): The name of the playlist to add the video to. If None, uses project name from config.
 
     Returns:
         tuple: A tuple containing a boolean indicating success (True) or failure (False),
@@ -126,7 +126,12 @@ def add_video_to_playlist(youtube, video_id, playlist_name="VLA"):
         Exception: For any other unexpected errors.
     """
     try:
-        # First, we need to find the ID of the "VLA" playlist
+        # Use project name from config if not specified
+        if playlist_name is None:
+            from timelapse_config import YOUTUBE_PLAYLIST_NAME
+            playlist_name = YOUTUBE_PLAYLIST_NAME
+        
+        # First, we need to find the playlist ID
         playlists_request = youtube.playlists().list(
             part="snippet",
             mine=True

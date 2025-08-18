@@ -5,11 +5,11 @@ import os
 import psutil
 import numpy as np
 from contextlib import contextmanager
-from vla_core import message_processor
+from timelapse_core import message_processor
 
 class MemoryOptimizer:
     """
-    Memory management and performance optimization utilities for VLA operations.
+    Memory management and performance optimization utilities for timelapse operations.
     
     Features:
     - Memory usage monitoring

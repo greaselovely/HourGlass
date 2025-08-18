@@ -1,12 +1,12 @@
-# EVLA Webcam Time-Lapse Video Creator
+# HourGlass - Webcam Timelapse System
 
 ## Overview
-This script automatically downloads images from the Expanded Very Large Array (EVLA) observatory webcam, generates a time-lapse video from these images, and adds a soundtrack to the video. The system features enhanced reliability, performance monitoring, and intelligent error handling. It runs continuously, capturing images at random intervals between 15 to 22 seconds, with advanced session recovery and exponential backoff for maximum uptime.
+HourGlass is a flexible and robust webcam timelapse system that automatically downloads images from any webcam URL, generates time-lapse videos from these images, and optionally adds soundtracks. The system features enhanced reliability, performance monitoring, and intelligent error handling. It runs continuously, capturing images at configurable intervals, with advanced session recovery and exponential backoff for maximum uptime.
 
 ## Features
 
 ### Core Functionality
-- **Automated Image Downloads:** Downloads images from the EVLA observatory webcam
+- **Automated Image Downloads:** Downloads images from any configured webcam URL
 - **Duplicate Avoidance:** Uses SHA-256 hashing to prevent saving duplicate images
 - **Time-Lapse Video Creation:** Generates high-quality time-lapse videos from collected images
 - **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos
@@ -27,7 +27,7 @@ This script automatically downloads images from the Expanded Very Large Array (E
 - **macOS** (with Homebrew)
 
 ## Requirements
-- Python 3.12 or newer
+- Python 3.12 (specifically - newer versions may have compatibility issues with dependencies)
 - Additional system monitoring capabilities (automatically installed)
 
 ## Setup
@@ -35,8 +35,19 @@ This script automatically downloads images from the Expanded Very Large Array (E
 ### Automated Setup
 The easiest way to get started:
 
+1. Install dependencies:
 ```bash
 bash setup.sh
+```
+
+2. Configure your project:
+```bash
+python initial_setup.py
+```
+
+3. Start capturing:
+```bash
+./hourglass.sh
 ```
 
 This will automatically:
