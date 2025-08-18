@@ -901,15 +901,15 @@ def concatenate_songs(songs, crossfade_seconds=3):
 
     return None
 
-def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_seconds=3, end_black_seconds=3):
+def create_time_lapse(valid_files, video_path, fps, audio_input=None, crossfade_seconds=3, end_black_seconds=3):
     """
-    Creates a time-lapse video from a list of image files with audio.
+    Creates a time-lapse video from a list of image files with optional audio.
 
     Args:
         valid_files (list): List of paths to image files.
         video_path (str): Path where the final video will be saved.
         fps (int): Frames per second for the video.
-        audio_input (str or AudioFileClip): Path to the audio file or an AudioFileClip object.
+        audio_input (str or AudioFileClip, optional): Path to the audio file or an AudioFileClip object. Defaults to None.
         crossfade_seconds (int, optional): Duration of crossfade effect. Defaults to 3.
         end_black_seconds (int, optional): Duration of black screen at the end. Defaults to 3.
     """
@@ -920,25 +920,30 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
         message_processor(f"Creating time-lapse with {len(valid_files)} images at {fps} fps")
         video_clip = ImageSequenceClip(valid_files, fps=fps)
         
-        message_processor("Processing Audio")
-        if isinstance(audio_input, str):
-            audio_clip = AudioFileClip(audio_input)
-        elif hasattr(audio_input, 'audio_fadein'):
-            audio_clip = audio_input
+        audio_clip = None
+        if audio_input:
+            message_processor("Processing Audio")
+            if isinstance(audio_input, str):
+                audio_clip = AudioFileClip(audio_input)
+            elif hasattr(audio_input, 'audio_fadein'):
+                audio_clip = audio_input
+            else:
+                raise ValueError("Invalid audio input: must be a file path or an AudioClip")
+            
+            message_processor(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
+            
+            if audio_clip.duration < video_clip.duration:
+                message_processor("Audio is shorter than video. Looping audio.", "warning")
+                audio_clip = audio_clip.loop(duration=video_clip.duration)
+            else:
+                audio_clip = audio_clip.subclip(0, video_clip.duration)
+            
+            message_processor("Applying Audio Effects")
+            audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
+            video_clip = video_clip.set_audio(audio_clip)
         else:
-            raise ValueError("Invalid audio input: must be a file path or an AudioClip")
+            message_processor("Creating video without audio")
         
-        message_processor(f"Video duration: {video_clip.duration}, Audio duration: {audio_clip.duration}")
-        
-        if audio_clip.duration < video_clip.duration:
-            message_processor("Audio is shorter than video. Looping audio.", "warning")
-            audio_clip = audio_clip.loop(duration=video_clip.duration)
-        else:
-            audio_clip = audio_clip.subclip(0, video_clip.duration)
-        
-        message_processor("Applying Audio Effects")
-        audio_clip = audio_clip.audio_fadein(crossfade_seconds).audio_fadeout(crossfade_seconds)
-        video_clip = video_clip.set_audio(audio_clip)
         video_clip = video_clip.fadein(crossfade_seconds).fadeout(crossfade_seconds)
 
         message_processor("Creating End Frame")
@@ -949,7 +954,10 @@ def create_time_lapse(valid_files, video_path, fps, audio_input, crossfade_secon
         
         message_processor("Writing Video File")
         logging.info(f"Writing video file to {video_path}")
-        final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
+        if audio_clip:
+            final_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
+        else:
+            final_clip.write_videofile(video_path, codec="libx264", logger=logger)
 
     except Exception as e:
         error_message = f"Error in create_time_lapse: {str(e)}"
