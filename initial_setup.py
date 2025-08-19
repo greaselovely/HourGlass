@@ -24,40 +24,56 @@ def validate_url(url):
     """Basic URL validation."""
     return url.startswith(('http://', 'https://'))
 
-def create_initial_config():
+def create_initial_config(existing_config=None):
     """Interactive setup to create initial configuration."""
     print("\n" + "="*60)
     print(" HourGlass Timelapse System - Initial Setup")
     print("="*60 + "\n")
     
-    config = {
-        "version": 2.0,
-        "project": {},
-        "capture": {},
-        "video": {},
-        "proxies": {},
-        "auth": {},
-        "alerts": {},
-        "sun": {},
-        "files_and_folders": {},
-        "urls": {},
-        "output_symbols": {},
-        "user_agents": [],
-        "music": {},
-        "tmux": {},
-        "performance": {}
-    }
+    # Start with existing config or create new
+    if existing_config:
+        config = existing_config.copy()
+        print("Updating existing configuration...\n")
+    else:
+        config = {
+            "version": 2.0,
+            "project": {},
+            "capture": {},
+            "video": {},
+            "proxies": {},
+            "auth": {},
+            "alerts": {},
+            "sun": {},
+            "files_and_folders": {},
+            "urls": {},
+            "output_symbols": {},
+            "user_agents": [],
+            "music": {},
+            "tmux": {},
+            "performance": {}
+        }
     
     # Project settings
     print("\n[1/8] Project Configuration")
     print("-" * 40)
-    project_name = input("Enter project name (used for filenames): ").strip()
-    while not project_name:
-        print("Project name is required!")
-        project_name = input("Enter project name: ").strip()
+    
+    if existing_config and config.get("project", {}).get("name"):
+        current_name = config["project"]["name"]
+        project_name = input(f"Enter project name (current: {current_name}): ").strip()
+        if not project_name:
+            project_name = current_name
+    else:
+        project_name = input("Enter project name (used for filenames): ").strip()
+        while not project_name:
+            print("Project name is required!")
+            project_name = input("Enter project name: ").strip()
     
     config["project"]["name"] = project_name
-    config["project"]["description"] = input("Project description (optional): ").strip()
+    
+    current_desc = config.get("project", {}).get("description", "")
+    desc_prompt = f"Project description (current: {current_desc}): " if current_desc else "Project description (optional): "
+    new_desc = input(desc_prompt).strip()
+    config["project"]["description"] = new_desc if new_desc else current_desc
     
     # File and folder settings
     print("\n[2/8] Storage Configuration")
@@ -82,14 +98,29 @@ def create_initial_config():
     print("\n[3/8] Webcam Configuration")
     print("-" * 40)
     
-    webcam_url = input("Webcam image URL: ").strip()
-    while not validate_url(webcam_url):
-        print("Please enter a valid URL (starting with http:// or https://)")
+    # Get current IMAGE_URL if it exists
+    current_image_url = config.get("urls", {}).get("IMAGE_URL", "")
+    if current_image_url and current_image_url not in ["", "https://example.com/webcam.jpg"]:
+        webcam_url = input(f"Webcam image URL (current: {current_image_url}): ").strip()
+        if not webcam_url:
+            webcam_url = current_image_url
+    else:
         webcam_url = input("Webcam image URL: ").strip()
+        while not validate_url(webcam_url):
+            print("Please enter a valid URL (starting with http:// or https://)")
+            webcam_url = input("Webcam image URL: ").strip()
     
     config["urls"]["IMAGE_URL"] = webcam_url
     
-    webpage_url = input("Webcam webpage URL (optional, press Enter to skip): ").strip()
+    # Get current WEBPAGE if it exists
+    current_webpage = config.get("urls", {}).get("WEBPAGE", "")
+    if current_webpage and current_webpage not in ["", "https://example.com"]:
+        webpage_url = input(f"Webcam webpage URL (current: {current_webpage}): ").strip()
+        if not webpage_url:
+            webpage_url = current_webpage
+    else:
+        webpage_url = input("Webcam webpage URL (optional, press Enter to skip): ").strip()
+    
     if webpage_url and not validate_url(webpage_url):
         webpage_url = ""
     config["urls"]["WEBPAGE"] = webpage_url or webcam_url
@@ -116,26 +147,81 @@ def create_initial_config():
     # Sun/daylight settings
     print("\n[5/8] Daylight Hours Configuration")
     print("-" * 40)
+    print("Configure automatic sunrise/sunset detection or set manual times.")
+    print("")
+    
+    # Check for existing sun URL
+    current_sun_url = config.get("sun", {}).get("URL", "")
+    
+    # Ask for sun URL first
+    print("Option 1: Automatic sunrise/sunset times from timeanddate.com")
+    print("Examples:")
+    print("  - For New York: https://www.timeanddate.com/sun/usa/new-york")
+    print("  - For London: https://www.timeanddate.com/sun/uk/london")
+    print("  - For coordinates: https://www.timeanddate.com/sun/@40.7128,-74.0060")
+    print("")
+    
+    if current_sun_url and current_sun_url != "":
+        sun_url = input(f"Sun schedule URL (current: {current_sun_url}): ").strip()
+        if not sun_url:
+            sun_url = current_sun_url
+    else:
+        sun_url = input("Sun schedule URL (or press Enter to use manual times): ").strip()
+    
+    # Validate if provided
+    if sun_url and not sun_url.startswith("http"):
+        # Try to construct URL from location
+        if "timeanddate.com" not in sun_url:
+            # Assume it's a location like "usa/new-york" or "40.7128,-74.0060"
+            sun_url = f"https://www.timeanddate.com/sun/{sun_url}"
+    
+    config["sun"]["URL"] = sun_url
+    
+    print("")
+    print("Option 2: Manual times (used as fallback if URL unavailable)")
     print("Enter times in 24-hour format (HH:MM:SS)")
     
-    config["sun"]["SUNRISE"] = get_input_with_default("Sunrise time", "06:00:00")
-    config["sun"]["SUNSET"] = get_input_with_default("Sunset time", "19:00:00")
+    config["sun"]["SUNRISE"] = get_input_with_default("Manual sunrise time", "06:00:00")
+    config["sun"]["SUNSET"] = get_input_with_default("Manual sunset time", "19:00:00")
     config["sun"]["SUNSET_TIME_ADD"] = int(get_input_with_default(
         "Minutes to add after sunset",
         "60"
     ))
-    config["sun"]["TIME_OFFSET_HOURS"] = int(get_input_with_default(
-        "Time zone offset from webcam location (hours)",
-        "0"
-    ))
+    print("")
+    print("Time Zone Configuration:")
+    print("This ensures images are saved to the correct day folder based on the webcam's location.")
+    print("")
+    print("Common timezone offsets from UTC:")
+    print("  PST/PDT: -8/-7  |  MST/MDT: -7/-6  |  CST/CDT: -6/-5  |  EST/EDT: -5/-4")
+    print("  London: 0/+1    |  Paris: +1/+2    |  Tokyo: +9      |  Sydney: +10/+11")
+    print("")
     
-    # Ask for location for sun times URL
-    location = input("Location for sunrise/sunset times (city or coordinates, optional): ").strip()
-    if location:
-        # Convert to timeanddate.com URL format
-        config["sun"]["URL"] = f"https://www.timeanddate.com/sun/@{location.replace(' ', '+')}"
+    # Get server timezone
+    server_tz = input("Server timezone offset from UTC (e.g., -6 for MDT, 0 for UTC): ").strip()
+    try:
+        server_offset = float(server_tz)
+    except:
+        print("Invalid input, assuming UTC (0)")
+        server_offset = 0
+    
+    # Get webcam timezone
+    webcam_tz = input("Webcam location timezone offset from UTC (e.g., 9 for Japan): ").strip()
+    try:
+        webcam_offset = float(webcam_tz)
+    except:
+        print("Invalid input, assuming same as server")
+        webcam_offset = server_offset
+    
+    # Calculate the offset
+    time_offset = int(webcam_offset - server_offset)
+    
+    if time_offset != 0:
+        print(f"Calculated offset: {time_offset} hours")
+        print(f"(Webcam is {abs(time_offset)} hours {'ahead of' if time_offset > 0 else 'behind'} server)")
     else:
-        config["sun"]["URL"] = ""
+        print("Server and webcam are in the same timezone")
+    
+    config["sun"]["TIME_OFFSET_HOURS"] = time_offset
     
     # Music/Audio settings
     print("\n[6/8] Audio Configuration (for video creation)")
@@ -146,17 +232,14 @@ def create_initial_config():
     if use_music:
         config["music"]["enabled"] = True
         config["music"]["pixabay_api_key"] = input("Pixabay API key (optional): ").strip()
-        config["music"]["search_terms"] = get_input_with_default(
-            "Music search terms (comma-separated)",
-            "ambient,relaxing,timelapse"
-        ).split(',')
-        config["music"]["search_terms"] = [term.strip() for term in config["music"]["search_terms"]]
+        # Always use 'background music' as the search term
+        config["music"]["search_terms"] = ["background music"]
         config["music"]["min_duration"] = 60
         config["music"]["preferred_genres"] = ["ambient", "classical", "electronic"]
     else:
         config["music"]["enabled"] = False
         config["music"]["pixabay_api_key"] = ""
-        config["music"]["search_terms"] = []
+        config["music"]["search_terms"] = ["background music"]
         config["music"]["min_duration"] = 60
         config["music"]["preferred_genres"] = []
     
@@ -277,15 +360,34 @@ def create_directories(config):
 def main():
     """Main setup function."""
     # Check if config already exists
+    update_mode = False
+    existing_config = None
     if os.path.exists("config.json"):
         print("\n⚠ config.json already exists!")
-        overwrite = input("Do you want to overwrite it? (y/n) [n]: ").strip().lower()
-        if overwrite != 'y':
+        print("Would you like to:")
+        print("  1. Update missing/empty fields only")
+        print("  2. Overwrite completely")
+        print("  3. Cancel")
+        choice = input("Enter your choice (1/2/3) [1]: ").strip() or "1"
+        
+        if choice == "3":
             print("Setup cancelled.")
             sys.exit(0)
+        elif choice == "1":
+            update_mode = True
+            # Load existing config
+            try:
+                with open("config.json", "r") as f:
+                    existing_config = json.load(f)
+            except:
+                print("Error reading existing config. Starting fresh.")
+                update_mode = False
+        elif choice != "2":
+            print("Invalid choice. Defaulting to update mode.")
+            update_mode = True
     
     # Run interactive setup
-    config = create_initial_config()
+    config = create_initial_config(existing_config if update_mode else None)
     
     # Save configuration
     if not save_config(config):
@@ -301,8 +403,61 @@ def main():
     print(f"\nProject '{config['project']['name']}' has been configured.")
     print("\nNext steps:")
     print("  1. Run ./setup.sh to install dependencies")
-    print("  2. Run ./hourglass.sh to start capturing")
+    print("  2. Test with: python main.py")
+    print("  3. For continuous capture: ./hourglass.sh")
+    
+    # Calculate cron scheduling times
+    time_offset = config.get('sun', {}).get('TIME_OFFSET_HOURS', 0)
+    sunrise_time = config.get('sun', {}).get('SUNRISE', '06:00:00')
+    sunset_time = config.get('sun', {}).get('SUNSET', '19:00:00')
+    
+    # Parse sunrise hour
+    try:
+        sunrise_hour = int(sunrise_time.split(':')[0])
+        sunset_hour = int(sunset_time.split(':')[0])
+        
+        # Calculate server time for webcam's sunrise
+        server_sunrise_hour = (sunrise_hour - time_offset) % 24
+        server_sunset_hour = (sunset_hour - time_offset + 1) % 24  # +1 for after sunset
+        
+        print("\nScheduling with cron:")
+        print("  IMPORTANT: Cron uses YOUR SERVER'S local time.")
+        
+        if time_offset != 0:
+            print(f"\n  Your configuration:")
+            print(f"  - Webcam sunrise: {sunrise_time} (webcam local time)")
+            print(f"  - Server should start at: {server_sunrise_hour:02d}:00 (server local time)")
+            print(f"  - Server should stop at: {server_sunset_hour:02d}:00 (server local time)")
+            
+            print(f"\n  Suggested cron entries:")
+            print(f"  # Start capturing at webcam's sunrise")
+            print(f"  0 {server_sunrise_hour} * * * cd /path/to/HourGlass && ./hourglass.sh")
+            print(f"  # Stop capturing after webcam's sunset")
+            print(f"  0 {server_sunset_hour} * * * pkill -f 'python main.py'")
+            
+            if server_sunrise_hour > sunrise_hour:
+                print("\n  Note: Due to timezone difference, this starts the previous day on your server!")
+        else:
+            print(f"\n  Server and webcam are in the same timezone.")
+            print(f"  Suggested cron entries:")
+            print(f"  # Start at sunrise ({sunrise_time})")
+            print(f"  0 {sunrise_hour} * * * cd /path/to/HourGlass && ./hourglass.sh")
+            print(f"  # Stop after sunset")
+            print(f"  0 {sunset_hour + 1} * * * pkill -f 'python main.py'")
+            
+    except:
+        print("\nScheduling with cron:")
+        print("  Schedule based on YOUR SERVER'S local time.")
+        print("  Example: 0 6 * * * cd /path/to/HourGlass && ./hourglass.sh")
+    
     print("\nYou can edit config.json manually to fine-tune settings.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nSetup interrupted by user. Exiting gracefully.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nUnexpected error during setup: {e}")
+        sys.exit(1)

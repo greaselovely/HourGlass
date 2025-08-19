@@ -7,7 +7,7 @@ import logging
 from PIL import Image
 from pathlib import Path
 from wurlitzer import pipes
-from vla_core import message_processor
+from timelapse_core import message_processor
 
 def validate_images_fast(run_images_folder, run_valid_images_file, force_revalidate=False):
     """

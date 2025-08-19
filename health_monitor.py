@@ -334,7 +334,7 @@ class HealthMonitor:
         return metrics
     
     def _check_network_connectivity(self) -> List[HealthMetric]:
-        """Check network connectivity to VLA services."""
+        """Check network connectivity to HourGlass services."""
         metrics = []
         
         urls_to_check = {
@@ -359,6 +359,25 @@ class HealthMonitor:
                     else:
                         status = 'healthy'
                         message = f"{name} accessible ({response_time:.0f}ms)"
+                elif response.status_code == 405:
+                    # 405 Method Not Allowed is common for webcam URLs that don't support HEAD
+                    # Try a quick GET request to check actual connectivity
+                    try:
+                        get_start = time.time()
+                        get_response = requests.get(url, timeout=10, stream=True)
+                        get_response.close()  # Close immediately, we just wanted to check connectivity
+                        get_time = (time.time() - get_start) * 1000
+                        
+                        if get_response.status_code == 200:
+                            status = 'healthy'
+                            message = f"{name} accessible (GET check: {get_time:.0f}ms)"
+                        else:
+                            status = 'warning'
+                            message = f"{name} returned status {get_response.status_code} on GET"
+                    except:
+                        # If GET also fails, just note that HEAD isn't supported
+                        status = 'info'
+                        message = f"{name} doesn't support HEAD requests (405)"
                 else:
                     status = 'warning'
                     message = f"{name} returned status {response.status_code}"
@@ -579,7 +598,7 @@ def create_health_monitor(config, check_interval=300):
     Factory function to create a health monitor.
     
     Args:
-        config: VLA configuration
+        config: HourGlass configuration
         check_interval: Seconds between checks
         
     Returns:

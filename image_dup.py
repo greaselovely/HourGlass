@@ -82,10 +82,12 @@ def get_or_create_run_id():
     return run_id
 
 def generate_images(fps, duration, interval, source_filename, run_id):
+    # Load project name from config
+    from timelapse_config import PROJECT_NAME, IMAGES_FOLDER
+    
     # Set the directories under the user's home directory
-    home_directory = Path.home()
-    images_folder = home_directory / 'VLA' / 'images' / run_id
-    source_image = home_directory / 'VLA' / 'images' / source_filename
+    images_folder = Path(IMAGES_FOLDER) / run_id
+    source_image = Path(IMAGES_FOLDER) / source_filename
 
     # Ensure the images folder exists
     images_folder.mkdir(parents=True, exist_ok=True)
@@ -105,7 +107,7 @@ def generate_images(fps, duration, interval, source_filename, run_id):
         try:
             today_short_date = current_time.strftime("%m%d%Y")
             today_short_time = current_time.strftime("%H%M%S")
-            filename = f'vla.{today_short_date}.{today_short_time}.jpg'
+            filename = f'{PROJECT_NAME}.{today_short_date}.{today_short_time}.jpg'
             destination_path = images_folder / filename
             copyfile(source_image, destination_path)
             logging.info(f"Created image: {filename} in run_id: {run_id}")
@@ -114,6 +116,12 @@ def generate_images(fps, duration, interval, source_filename, run_id):
             logging.error(f"Error creating image {i}: {str(e)}")
 
 def main():
+    # Load config first
+    from timelapse_config import load_config
+    if not load_config():
+        print("Failed to load configuration")
+        return
+    
     setup_logging()
     args = parse_arguments()
     

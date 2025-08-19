@@ -13,7 +13,7 @@ class ConfigValidator:
     """
     Validates configuration settings and performs health checks.
     
-    This class provides comprehensive validation of the VLA configuration,
+    This class provides comprehensive validation of the HourGlass configuration,
     including network connectivity, file permissions, and setting reasonableness.
     """
     
@@ -123,7 +123,7 @@ class ConfigValidator:
                 
         # Validate required keys within sections
         if 'files_and_folders' in config:
-            required_folder_keys = ['VLA_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER']
+            required_folder_keys = ['PROJECT_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER']
             for key in required_folder_keys:
                 if key not in config['files_and_folders']:
                     self.validation_errors.append(f"Missing required folder configuration: {key}")
@@ -142,17 +142,17 @@ class ConfigValidator:
         folders = config['files_and_folders']
         
         # Check if base folder is reasonable
-        if 'VLA_BASE' in folders:
-            base_path = Path(folders['VLA_BASE'])
+        if 'PROJECT_BASE' in folders:
+            base_path = Path(folders['PROJECT_BASE'])
             
             # Warn if base path is in unusual locations
             unusual_locations = ['/tmp', '/var/tmp', '/dev', '/proc', '/sys']
             if any(str(base_path).startswith(loc) for loc in unusual_locations):
-                self.validation_warnings.append(f"VLA_BASE is in an unusual location: {base_path}")
+                self.validation_warnings.append(f"PROJECT_BASE is in an unusual location: {base_path}")
                 
             # Check if path is writable (if it exists)
             if base_path.exists() and not os.access(base_path, os.W_OK):
-                self.validation_errors.append(f"VLA_BASE directory is not writable: {base_path}")
+                self.validation_errors.append(f"PROJECT_BASE directory is not writable: {base_path}")
     
     def _validate_urls(self, config):
         """Validate URL configurations."""
@@ -293,15 +293,15 @@ class ConfigValidator:
             self.health_status[f"network_{url_key.lower()}"] = status
     
     def _check_disk_space(self, config):
-        """Check available disk space for VLA operations."""
-        if 'files_and_folders' not in config or 'VLA_BASE' not in config['files_and_folders']:
+        """Check available disk space for HourGlass operations."""
+        if 'files_and_folders' not in config or 'PROJECT_BASE' not in config['files_and_folders']:
             return
             
         try:
             import shutil
             
-            vla_base = config['files_and_folders']['VLA_BASE']
-            total, used, free = shutil.disk_usage(vla_base)
+            project_base = config['files_and_folders']['PROJECT_BASE']
+            total, used, free = shutil.disk_usage(project_base)
             
             free_gb = free / (1024 ** 3)
             total_gb = total / (1024 ** 3)

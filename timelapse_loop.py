@@ -1,4 +1,4 @@
-# vla_loop.py
+# timelapse_loop.py
 
 import os
 import cursor
@@ -6,10 +6,11 @@ import logging
 from time import sleep
 from random import choice
 from datetime import datetime, timedelta
-from vla_core import message_processor, activity, clear, create_session, log_jamming, RED_CIRCLE
+from timelapse_core import message_processor, activity, clear, create_session, log_jamming
+from timelapse_config import RED_CIRCLE
 
 
-class VLAMainLoop:
+class TimelapseMainLoop:
     """
     Enhanced main loop with sophisticated error handling, exponential backoff,
     and resilient session management.

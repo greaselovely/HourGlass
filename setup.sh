@@ -162,4 +162,4 @@ fi
 
 echo -e "[✓]\tAll Operation Telescope dependencies verified"
 echo -e "[i]\tInstallation complete. Virtual environment and packages are installed."
-echo -e "[i]\tYou can now run: ./vla.sh or python main.py"
+echo -e "[i]\tYou can now run: ./hourglass.sh or python main.py"

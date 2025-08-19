@@ -1,22 +1,103 @@
 # main.py
 
 import sys
+import os
 import cursor
 import argparse
-from timelapse_core import *
-from timelapse_config import *
-from timelapse_core import CustomLogger, ImageDownloader
-from timelapse_loop import create_timelapse_main_loop
-from config_validator import ConfigValidator
-from health_monitor import create_health_monitor
-from config_validator import validate_config_quick
-from moviepy.editor import ImageSequenceClip, AudioFileClip
-from timelapse_validator import validate_images as validate_images_fast
-from memory_optimizer import memory_managed_operation, monitor_resource_usage
+import subprocess
+# Don't import timelapse_config yet - it creates config.json on import
+# We'll import it after checking if config exists
 
 
 # Configuration constants
 TEST_DURATION_HOURS = 2
+
+def check_config_needs_setup(config):
+    """
+    Check if the configuration needs initial setup.
+    
+    Returns True if config has default/empty critical values.
+    """
+    critical_empty_fields = []
+    
+    # Check critical URLs
+    urls = config.get('urls', {})
+    if not urls.get('IMAGE_URL') or urls.get('IMAGE_URL') == 'https://example.com/webcam.jpg' or urls.get('IMAGE_URL') == '':
+        critical_empty_fields.append('IMAGE_URL')
+    if not urls.get('WEBPAGE') or urls.get('WEBPAGE') == 'https://example.com' or urls.get('WEBPAGE') == '':
+        critical_empty_fields.append('WEBPAGE')
+    
+    # Check if sun URL is empty (optional but recommended)
+    sun = config.get('sun', {})
+    if not sun.get('URL'):
+        critical_empty_fields.append('sun.URL (optional but recommended)')
+    
+    return len(critical_empty_fields) > 0, critical_empty_fields
+
+def import_dependencies():
+    """Import all the dependencies after config check."""
+    global message_processor, load_config, config, validate_config_quick
+    global create_timelapse_main_loop, ConfigValidator, create_health_monitor
+    global validate_images_fast, memory_managed_operation, monitor_resource_usage
+    global ImageSequenceClip, AudioFileClip, CustomLogger, ImageDownloader
+    global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
+    global setup_logging
+    
+    from timelapse_core import message_processor, CustomLogger, ImageDownloader
+    from timelapse_config import (load_config, config, 
+                                 PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, 
+                                 LOGGING_FOLDER, AUDIO_FOLDER, setup_logging)
+    from timelapse_loop import create_timelapse_main_loop
+    from config_validator import ConfigValidator, validate_config_quick
+    from health_monitor import create_health_monitor
+    from moviepy.editor import ImageSequenceClip, AudioFileClip
+    from timelapse_validator import validate_images as validate_images_fast
+    from memory_optimizer import memory_managed_operation, monitor_resource_usage
+    
+    # Import everything else from timelapse_core and timelapse_config
+    import timelapse_core
+    import timelapse_config
+    for name in dir(timelapse_core):
+        if not name.startswith('_'):
+            globals()[name] = getattr(timelapse_core, name)
+    for name in dir(timelapse_config):
+        if not name.startswith('_'):
+            globals()[name] = getattr(timelapse_config, name)
+
+def run_initial_setup():
+    """
+    Run the initial setup script interactively.
+    
+    Returns True if setup completed successfully.
+    """
+    try:
+        print("\n" + "="*60)
+        print(" HourGlass needs initial configuration")
+        print("="*60)
+        print("\nThe configuration is missing critical values:")
+        print("- IMAGE_URL: The URL of your webcam image")
+        print("- WEBPAGE: The webpage containing the webcam")
+        print("- sun.URL: (Optional) URL for sunrise/sunset times")
+        print("\nStarting interactive setup...\n")
+        
+        # Run the initial_setup.py script
+        result = subprocess.run([sys.executable, "initial_setup.py"], 
+                              check=False)
+        
+        if result.returncode == 0:
+            print("\nSetup completed successfully!")
+            return True
+        else:
+            print("\nSetup was cancelled or failed.")
+            return False
+    
+    except KeyboardInterrupt:
+        print("\n\nSetup interrupted by user. Exiting gracefully.")
+        return False
+        
+    except Exception as e:
+        print(f"\nError running setup: {e}")
+        return False
 
 def find_available_run_folders():
     """
@@ -307,9 +388,48 @@ def main():
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
-    if not load_config():
-        message_processor("Failed to load configuration. Exiting.", "error")
-        return
+    # Check if config.json exists first
+    if not os.path.exists("config.json"):
+        # No config exists, run setup
+        if not args.health and not args.validate:  # Don't run setup for utility commands
+            if run_initial_setup():
+                # Now import dependencies and load the newly created config
+                import_dependencies()
+                if not load_config():
+                    message_processor("Failed to load configuration after setup. Exiting.", "error")
+                    return
+            else:
+                print("Initial setup required but was not completed. Exiting.")
+                return
+        else:
+            print("No configuration found. Run without --health or --validate to set up.")
+            return
+    else:
+        # Config exists, import dependencies and load it
+        import_dependencies()
+        if not load_config():
+            message_processor("Failed to load configuration. Exiting.", "error")
+            return
+        
+        # Check if the existing configuration needs setup
+        needs_setup, missing_fields = check_config_needs_setup(config)
+        if needs_setup:
+            if not args.health and not args.validate:  # Don't run setup for utility commands
+                if run_initial_setup():
+                    # Reload configuration after setup
+                    if not load_config():
+                        message_processor("Failed to reload configuration after setup. Exiting.", "error")
+                        return
+                    # Check again if setup was successful with the newly loaded config
+                    from timelapse_config import config as reloaded_config
+                    needs_setup, missing_fields = check_config_needs_setup(reloaded_config)
+                    if needs_setup:
+                        message_processor("Setup incomplete. Critical fields still missing.", "error")
+                        message_processor(f"Missing: {', '.join(missing_fields)}", "error")
+                        return
+                else:
+                    message_processor("Initial setup required but was not completed. Exiting.", "error")
+                    return
     
     time_offset = 0
     if "sun" in config and "TIME_OFFSET_HOURS" in config["sun"]:
