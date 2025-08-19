@@ -832,7 +832,7 @@ def calculate_video_duration(num_images, fps) -> int:
     duration_ms = int(duration_sec * 1000)
     return duration_ms
 
-def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False):
+def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None):
     """
     Downloads a random song from Pixabay and tests its usability.
 
@@ -876,8 +876,16 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False):
             )
             
             # Step 1: Get page 1 HTML to extract bootstrap URL and total pages
-            search_term = "background music"
-            page1_url = f"https://pixabay.com/music/search/{search_term.replace(' ', '%20')}/"
+            # Get base URL and search term from config if available
+            if config and 'music' in config:
+                base_url = config['music'].get('pixabay_base_url', 'https://pixabay.com/music/search/')
+                search_terms = config['music'].get('search_terms', ['background music'])
+                search_term = search_terms[0] if search_terms else 'background music'
+            else:
+                base_url = 'https://pixabay.com/music/search/'
+                search_term = 'background music'
+            
+            page1_url = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/"
             
             message_processor(f"Fetching Pixabay music catalog for '{search_term}' (attempt {attempt + 1})", "info")
             message_processor(f"URL: {page1_url}", "info")
@@ -928,7 +936,7 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False):
             
             # Step 4: If not page 1, fetch the selected page
             if selected_page > 1:
-                page_url = f"https://pixabay.com/music/search/{search_term.replace(' ', '%20')}/?pagi={selected_page}"
+                page_url = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/?pagi={selected_page}"
                 message_processor(f"Fetching page {selected_page} of {total_pages}", "info")
                 message_processor(f"URL: {page_url}", "info")
                 
@@ -1035,7 +1043,7 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False):
     message_processor(f"Failed to download a usable audio file after {max_attempts} attempts.", "error")
     return None, None
 
-def audio_download(video_duration, AUDIO_FOLDER, debug=False) -> list:
+def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> list:
     """
     Downloads multiple songs, ensuring their total duration covers the video duration.
 
@@ -1056,7 +1064,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False) -> list:
     message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video", print_me=False)
 
     while total_duration < video_duration / 1000 and attempts < max_attempts:
-        song_path, song_duration_ms = single_song_download(AUDIO_FOLDER, debug=debug)
+        song_path, song_duration_ms = single_song_download(AUDIO_FOLDER, debug=debug, config=config)
         if song_path and song_duration_ms:
             song_duration_sec = song_duration_ms / 1000
             songs.append((song_path, song_duration_sec))

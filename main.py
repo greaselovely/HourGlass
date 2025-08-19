@@ -297,7 +297,7 @@ def test_audio_download(config, duration_seconds=60, debug=False, test_network=F
     
     try:
         # Call the audio download function
-        audio_result = audio_download(duration_ms, test_audio_folder, debug)
+        audio_result = audio_download(duration_ms, test_audio_folder, debug, config)
         
         if audio_result and len(audio_result) > 0:
             print(f"\nSuccessfully downloaded {len(audio_result)} audio file(s)")
@@ -531,7 +531,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                 audio_download, 
                 duration_threshold, 
                 run_audio_folder,
-                debug
+                debug,
+                config
             )
             
             if audio_result:

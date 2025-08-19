@@ -73,18 +73,21 @@ def create_initial_config(existing_config=None, project_name=None):
     print("\n[1/8] Project Configuration")
     print("-" * 40)
     
-    if existing_config and config.get("project", {}).get("name"):
+    # If project_name was passed as parameter, use it directly
+    if project_name:
+        print(f"Project name: {project_name}")
+        config["project"]["name"] = project_name
+    elif existing_config and config.get("project", {}).get("name"):
         current_name = config["project"]["name"]
-        project_name = input(f"Enter project name (current: {current_name}): ").strip()
-        if not project_name:
-            project_name = current_name
+        new_name = input(f"Enter project name (current: {current_name}): ").strip()
+        project_name = new_name if new_name else current_name
+        config["project"]["name"] = project_name
     else:
         project_name = input("Enter project name (used for filenames): ").strip()
         while not project_name:
             print("Project name is required!")
             project_name = input("Enter project name: ").strip()
-    
-    config["project"]["name"] = project_name
+        config["project"]["name"] = project_name
     
     current_desc = config.get("project", {}).get("description", "")
     desc_prompt = f"Project description (current: {current_desc}): " if current_desc else "Project description (optional): "
@@ -268,6 +271,7 @@ def create_initial_config(existing_config=None, project_name=None):
     
     if use_music:
         config["music"]["enabled"] = True
+        config["music"]["pixabay_base_url"] = "https://pixabay.com/music/search/"
         config["music"]["pixabay_api_key"] = input("Pixabay API key (optional): ").strip()
         # Always use 'background music' as the search term
         config["music"]["search_terms"] = ["background music"]
@@ -275,6 +279,7 @@ def create_initial_config(existing_config=None, project_name=None):
         config["music"]["preferred_genres"] = ["ambient", "classical", "electronic"]
     else:
         config["music"]["enabled"] = False
+        config["music"]["pixabay_base_url"] = "https://pixabay.com/music/search/"
         config["music"]["pixabay_api_key"] = ""
         config["music"]["search_terms"] = ["background music"]
         config["music"]["min_duration"] = 60
@@ -544,8 +549,12 @@ def create_directories(config):
     
     return True
 
-def main():
-    """Main setup function."""
+def main(preset_project_name=None):
+    """Main setup function.
+    
+    Args:
+        preset_project_name: Optional project name to create directly without prompting
+    """
     print("\n" + "="*60)
     print(" HourGlass Timelapse Configuration")
     print("="*60)
@@ -553,8 +562,18 @@ def main():
     # List existing projects
     existing_projects = list_existing_projects()
     
-    # Determine action
-    if existing_projects:
+    # If preset_project_name is provided, create that project directly
+    if preset_project_name:
+        if preset_project_name in existing_projects:
+            print(f"\nUpdating existing project: {preset_project_name}")
+            project_name = preset_project_name
+            update_mode = True
+        else:
+            print(f"\nCreating new project: {preset_project_name}")
+            project_name = preset_project_name
+            update_mode = False
+    # Otherwise, show menu
+    elif existing_projects:
         print("\nExisting projects found:")
         for i, proj in enumerate(existing_projects, 1):
             print(f"  {i}. {proj}")
