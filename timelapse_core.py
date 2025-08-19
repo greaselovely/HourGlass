@@ -875,6 +875,36 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
                 }
             )
             
+            # Configure SOCKS proxy if available in config
+            if config and 'proxies' in config:
+                socks5 = config['proxies'].get('socks5', '')
+                socks5_hostname = config['proxies'].get('socks5_hostname', '')
+                
+                # Use socks5_hostname if available (for DNS resolution through proxy)
+                # Format: socks5h://hostname:port or socks5://hostname:port
+                if socks5_hostname:
+                    proxy_url = f"socks5h://{socks5_hostname}"
+                    session.proxies = {
+                        'http': proxy_url,
+                        'https': proxy_url
+                    }
+                    message_processor(f"Using SOCKS5 proxy (with hostname resolution): {socks5_hostname}", "info")
+                elif socks5:
+                    proxy_url = f"socks5://{socks5}"
+                    session.proxies = {
+                        'http': proxy_url,
+                        'https': proxy_url
+                    }
+                    message_processor(f"Using SOCKS5 proxy: {socks5}", "info")
+                # Also check for regular HTTP/HTTPS proxies
+                elif config['proxies'].get('http') or config['proxies'].get('https'):
+                    session.proxies = {}
+                    if config['proxies'].get('http'):
+                        session.proxies['http'] = config['proxies']['http']
+                    if config['proxies'].get('https'):
+                        session.proxies['https'] = config['proxies']['https']
+                    message_processor("Using HTTP/HTTPS proxy", "info")
+            
             # Step 1: Get page 1 HTML to extract bootstrap URL and total pages
             # Get base URL and search term from config if available
             if config and 'music' in config:

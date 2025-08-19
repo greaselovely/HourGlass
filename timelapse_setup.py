@@ -285,8 +285,58 @@ def create_initial_config(existing_config=None, project_name=None):
         config["music"]["min_duration"] = 60
         config["music"]["preferred_genres"] = []
     
+    # Proxy settings
+    print("\n[7/8] Proxy Configuration (optional)")
+    print("-" * 40)
+    print("Configure proxy settings for network requests (useful for bypassing IP blocks)")
+    
+    use_proxy = input("Do you need to use a proxy? (y/n) [n]: ").strip().lower() == 'y'
+    
+    if use_proxy:
+        print("\nProxy types:")
+        print("1. SOCKS5 proxy (recommended for bypassing blocks)")
+        print("2. HTTP/HTTPS proxy")
+        print("3. Both")
+        
+        proxy_choice = input("Select proxy type (1-3) [1]: ").strip() or "1"
+        
+        if proxy_choice in ["1", "3"]:
+            print("\nSOCKS5 Proxy Configuration:")
+            print("Format: hostname:port or IP:port")
+            print("Example: proxy.example.com:1080 or 192.168.1.10:1080")
+            
+            socks_input = input("SOCKS5 proxy (leave empty to skip): ").strip()
+            if socks_input:
+                # Check if hostname resolution through proxy is needed
+                use_hostname_resolution = input("Resolve DNS through proxy? (y/n) [y]: ").strip().lower() != 'n'
+                
+                if use_hostname_resolution:
+                    config["proxies"]["socks5_hostname"] = socks_input
+                    config["proxies"]["socks5"] = ""
+                else:
+                    config["proxies"]["socks5"] = socks_input
+                    config["proxies"]["socks5_hostname"] = ""
+        
+        if proxy_choice in ["2", "3"]:
+            print("\nHTTP/HTTPS Proxy Configuration:")
+            print("Format: http://hostname:port or http://username:password@hostname:port")
+            
+            http_proxy = input("HTTP proxy (leave empty to skip): ").strip()
+            config["proxies"]["http"] = http_proxy
+            
+            https_proxy = input("HTTPS proxy (leave empty to use same as HTTP): ").strip()
+            config["proxies"]["https"] = https_proxy if https_proxy else http_proxy
+    else:
+        # Keep default empty proxy settings
+        config["proxies"] = {
+            "http": "",
+            "https": "",
+            "socks5": "",
+            "socks5_hostname": ""
+        }
+    
     # Alert settings
-    print("\n[7/8] Alert Configuration (optional)")
+    print("\n[8/8] Alert Configuration (optional)")
     print("-" * 40)
     
     use_alerts = input("Enable ntfy.sh alerts? (y/n) [n]: ").strip().lower() == 'y'
@@ -305,7 +355,7 @@ def create_initial_config(existing_config=None, project_name=None):
     config["alerts"]["repeated_hash_count"] = 0
     
     # YouTube settings
-    print("\n[8/8] YouTube Upload Configuration (optional)")
+    print("\n[9/9] YouTube Upload Configuration (optional)")
     print("-" * 40)
     
     use_youtube = input("Configure YouTube upload? (y/n) [n]: ").strip().lower() == 'y'
@@ -325,12 +375,6 @@ def create_initial_config(existing_config=None, project_name=None):
             "refresh_token": "",
             "playlist_name": project_name
         }
-    
-    # Proxy settings
-    config["proxies"] = {
-        "http": "",
-        "https": ""
-    }
     
     # Tmux settings
     config["tmux"] = {
