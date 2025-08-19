@@ -294,7 +294,7 @@ def create_initial_config(existing_config=None, project_name=None):
     
     if use_proxy:
         print("\nProxy types:")
-        print("1. SOCKS5 proxy (recommended for bypassing blocks)")
+        print("1. SOCKS5 proxy")
         print("2. HTTP/HTTPS proxy")
         print("3. Both")
         
