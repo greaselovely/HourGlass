@@ -1,15 +1,17 @@
-# HourGlass - Webcam Timelapse System
+# HourGlass - Multi-Project Webcam Timelapse System
 
 ## Overview
-HourGlass is a flexible and robust webcam timelapse system that automatically downloads images from any webcam URL, generates time-lapse videos from these images, and optionally adds soundtracks. The system features enhanced reliability, performance monitoring, and intelligent error handling. It runs continuously, capturing images at configurable intervals, with advanced session recovery and exponential backoff for maximum uptime.
+HourGlass is a flexible and robust webcam timelapse system that automatically downloads images from any webcam URL, generates time-lapse videos from these images, and optionally adds soundtracks. The system supports multiple concurrent projects, features enhanced reliability, performance monitoring, and intelligent error handling. It runs continuously, capturing images at configurable intervals, with advanced session recovery and exponential backoff for maximum uptime.
 
 ## Features
 
 ### Core Functionality
+- **Multi-Project Support:** Manage multiple timelapse projects from a single installation
 - **Automated Image Downloads:** Downloads images from any configured webcam URL
+- **MJPEG Stream Support:** Extracts frames from MJPEG video streams
 - **Duplicate Avoidance:** Uses SHA-256 hashing to prevent saving duplicate images
 - **Time-Lapse Video Creation:** Generates high-quality time-lapse videos from collected images
-- **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos
+- **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos using Pixabay
 
 ### Enhanced Capabilities
 - **Robust Error Handling:** Exponential backoff and automatic session recovery
@@ -19,39 +21,169 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 - **Performance Metrics:** Comprehensive logging and performance tracking
 - **Log Rotation:** Automatic log file management preventing huge log files
 - **Configuration Validation:** Startup validation of settings and system health
+- **Timezone Support:** Automatic timezone handling for remote webcams
+- **tmux Integration:** Run captures in background with easy monitoring
 
 ## Tested On
 - **Ubuntu**
 - **Fedora** 
 - **Debian**
-- **macOS** (with Homebrew)
+- **macOS**
 
 ## Requirements
 - Python 3.12 (specifically - newer versions may have compatibility issues with dependencies)
+- tmux (for background operation)
 - Additional system monitoring capabilities (automatically installed)
 
-## Setup
+## Quick Start
 
-### Automated Setup
-The easiest way to get started:
-
-1. Install dependencies:
+### 1. Initial Setup
 ```bash
+# Install dependencies
 bash setup.sh
+
+# Configure your first project
+python timelapse_setup.py
 ```
 
-2. Configure your project:
+### 2. Running a Project
 ```bash
-python initial_setup.py
+# Start capture for a project
+./hourglass.sh <project_name>
+
+# Or run directly with Python
+python main.py <project_name>
+
+# Run with time bypass (for testing)
+python main.py <project_name> --no-time-check
 ```
 
-3. Start capturing:
+### 3. Create Video Only
 ```bash
-./hourglass.sh
+# Generate video from existing images
+python main.py <project_name> --movie
 ```
 
-This will automatically:
-- Detect your operating system
-- Install required system packages
-- Create a Python virtual environment
-- Install all Python dependencies
+## Project Structure
+
+Projects are stored in the `configs/` directory:
+```
+HourGlass/
+├── configs/
+│   ├── project1.json
+│   ├── project2.json
+│   └── ...
+├── instructions/
+│   ├── project1_instructions.txt
+│   └── ...
+└── <project_base>/
+    ├── images/
+    ├── video/
+    ├── audio/
+    └── logging/
+```
+
+## Configuration
+
+Each project has its own configuration file in `configs/<project_name>.json`. Key settings include:
+
+- **Webcam URLs:** Direct image URL or MJPEG stream
+- **Capture interval:** Time between image captures
+- **Sunrise/sunset times:** Automatic or manual scheduling
+- **Timezone offset:** For remote webcam locations
+- **Alert settings:** ntfy.sh integration for notifications
+- **Audio settings:** Background music configuration
+
+## Managing Multiple Projects
+
+### List Projects
+```bash
+ls configs/
+```
+
+### Create New Project
+```bash
+python timelapse_setup.py
+# Select "Create new project"
+```
+
+### Update Existing Project
+```bash
+python timelapse_setup.py
+# Select the project to update
+```
+
+## tmux Session Management
+
+HourGlass automatically creates tmux sessions for background operation:
+
+```bash
+# Attach to running session
+tmux attach -t hourglass-<project_name>
+
+# List all sessions
+tmux list-sessions
+
+# Kill a session
+tmux kill-session -t hourglass-<project_name>
+```
+
+## Cron Scheduling
+
+Each project's instructions file contains customized cron entries. Example:
+
+```bash
+# Start capture at sunrise
+0 6 * * * cd /path/to/HourGlass && ./hourglass.sh project_name
+
+# Stop capture after sunset
+0 20 * * * pkill -f 'python main.py project_name'
+```
+
+## Advanced Features
+
+### Health Monitoring
+```bash
+python main.py <project_name> --health
+```
+
+### Configuration Validation
+```bash
+python main.py <project_name> --validate
+```
+
+### Debug Mode
+```bash
+python main.py <project_name> --debug
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No project found:** Ensure the project config exists in `configs/`
+2. **Session creation failed:** Check USER_AGENTS and PROXIES in config
+3. **Images not saving:** Verify the webcam URL is accessible
+4. **MJPEG streams:** The system automatically detects and handles MJPEG streams
+
+### Logs
+
+Check project-specific logs:
+```bash
+tail -f ~/HourGlass/<project_name>/logging/timelapse.log
+```
+
+## Performance Notes
+
+- Optimized for long-running captures with automatic recovery
+- Memory-efficient processing for large image collections
+- Automatic cleanup of temporary files
+- Intelligent backoff for network failures
+
+## Contributing
+
+Contributions are welcome! Please ensure any changes maintain backward compatibility with existing project configurations.
+
+## License
+
+[Your License Here]

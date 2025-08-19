@@ -87,9 +87,9 @@ class TimelapseMainLoop:
             
             # Dynamic message based on mode
             if test_mode:
-                message_processor(f"Startingmain loop (test mode until {target_hour:02d}:{target_minute:02d})", "info")
+                message_processor(f"Starting main loop (test mode until {target_hour:02d}:{target_minute:02d})", "info")
             else:
-                message_processor(f"Startingmain loop (runs until sunset)", "info")
+                message_processor(f"Starting main loop (runs until sunset)", "info")
             
             while True:
                 try:

@@ -79,10 +79,11 @@ class ImageDownloader:
     - Health monitoring integration
     """
 
-    def __init__(self, session, out_path, config, user_agents=None, proxies=None, webpage=None, health_monitor=None, time_offset=0):
+    def __init__(self, session, out_path, config, user_agents=None, proxies=None, webpage=None, health_monitor=None, time_offset=0, config_path=None):
         self.out_path = Path(out_path)
         self.session = session
         self.config = config
+        self.config_path = config_path  # Store the config file path
         self.time_offset = time_offset
         self.user_agents = user_agents or []
         self.proxies = proxies or {}
@@ -167,9 +168,14 @@ class ImageDownloader:
         if should_write:
             try:
                 self.config['alerts']['repeated_hash_count'] = self.repeated_hash_count
-                with open('config.json', 'w') as file:
-                    json.dump(self.config, file, indent=2)
-                self.config_write_counter = 0  # Reset counter after write
+                # Use the config_path if provided, otherwise skip writing
+                if self.config_path:
+                    with open(self.config_path, 'w') as file:
+                        json.dump(self.config, file, indent=2)
+                    self.config_write_counter = 0  # Reset counter after write
+                # If no config_path, just reset counter without writing
+                else:
+                    self.config_write_counter = 0
             except Exception as e:
                 message_processor(f"Failed to update config: {e}", "error")
 
@@ -185,6 +191,7 @@ class ImageDownloader:
     def download_image(self, image_url, retry_delay=5):
         """
         Enhanced image download with session recovery and exponential backoff.
+        Handles both static images and MJPEG streams.
         
         Args:
             image_url (str): URL of the image to download
@@ -202,26 +209,74 @@ class ImageDownloader:
         
         escalation_points = self.config.get('alerts', {}).get('escalation_points', [10, 50, 100, 500])
         
+        # Check if URL is an MJPEG stream
+        is_mjpeg = 'mjpg' in image_url.lower() or 'mjpeg' in image_url.lower()
+        
         for attempt in range(2):
             try:
-                # Attempt download
-                r = self.session.get(image_url, timeout=30)
+                if is_mjpeg:
+                    # For MJPEG streams, we need to extract a single frame
+                    # Use stream=True to get the stream without loading all into memory
+                    r = self.session.get(image_url, stream=True, timeout=5)
+                    
+                    if r.status_code != 200:
+                        message_processor(f"{RED_CIRCLE} MJPEG stream returned code: {r.status_code}", "error")
+                        self.consecutive_failures += 1
+                        return None, None
+                    
+                    # Read the stream to find a complete JPEG image
+                    # MJPEG streams separate frames with boundary markers
+                    image_content = b''
+                    bytes_read = 0
+                    max_bytes = 5 * 1024 * 1024  # Max 5MB for safety
+                    
+                    # Look for JPEG start marker
+                    jpeg_start = b'\xff\xd8'
+                    jpeg_end = b'\xff\xd9'
+                    
+                    buffer = b''
+                    found_start = False
+                    
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if bytes_read > max_bytes:
+                            message_processor("MJPEG frame too large, skipping", "warning")
+                            break
+                        
+                        buffer += chunk
+                        bytes_read += len(chunk)
+                        
+                        # Look for JPEG markers
+                        if not found_start:
+                            start_idx = buffer.find(jpeg_start)
+                            if start_idx != -1:
+                                buffer = buffer[start_idx:]
+                                found_start = True
+                        
+                        if found_start:
+                            end_idx = buffer.find(jpeg_end)
+                            if end_idx != -1:
+                                # Found complete JPEG
+                                image_content = buffer[:end_idx + 2]
+                                r.close()  # Close the stream
+                                break
+                    
+                    if not image_content:
+                        message_processor("Could not extract frame from MJPEG stream", "error")
+                        self.consecutive_failures += 1
+                        return None, None
+                        
+                else:
+                    # Regular image download
+                    r = self.session.get(image_url, timeout=30)
+                    
+                    if r is None or r.status_code != 200:
+                        message_processor(f"{RED_CIRCLE} Code: {r.status_code if r else 'None'} - Request failed", "error")
+                        self.consecutive_failures += 1
+                        return None, None
+                    
+                    image_content = r.content
                 
-                if r is None or r.status_code != 200:
-                    message_processor(f"{RED_CIRCLE} Code: {r.status_code if r else 'None'} - Request failed", "error")
-                    
-                    # Try session recovery if this looks like a session issue
-                    if r is None or r.status_code in [403, 429, 502, 503, 504]:
-                        if self.session_failures < self.max_session_failures:
-                            if self.recover_session():
-                                continue  # Retry with new session
-                    
-                    self.consecutive_failures += 1
-                    if self.health_monitor:
-                        self.health_monitor.update_performance_stats('errors_encountered')
-                    return None, None
-
-                image_content = r.content
+                # Process the image content (same for both MJPEG and regular images)
                 image_size = len(image_content)
                 image_hash = self.compute_hash(image_content)
 
@@ -348,7 +403,7 @@ def clear():
     """
     os.system("cls" if os.name == "nt" else "clear")
 
-def get_or_create_run_id(time_offset=0):
+def get_or_create_run_id(time_offset=0, images_folder=None):
     """
     Get an existing run ID for today or create a new one.
 
@@ -371,8 +426,10 @@ def get_or_create_run_id(time_offset=0):
       which should be defined elsewhere in the codebase.
     - UUID is used to ensure uniqueness when creating a new run ID.
     """
+    if images_folder is None:
+        images_folder = IMAGES_FOLDER
     today = (datetime.now() + timedelta(hours=time_offset)).strftime("%Y%m%d")
-    run_folders = find_today_run_folders(time_offset)
+    run_folders = find_today_run_folders(time_offset, images_folder)
     
     if not run_folders:
         # No existing folders, create a new one
@@ -386,7 +443,7 @@ def get_or_create_run_id(time_offset=0):
         selected_folder = prompt_user_for_folder_selection(run_folders)
         return os.path.basename(selected_folder)
 
-def find_today_run_folders(time_offset=0):
+def find_today_run_folders(time_offset=0, images_folder=None):
     """
     Find all run folders for today in the images directory.
 
@@ -407,8 +464,15 @@ def find_today_run_folders(time_offset=0):
       defined elsewhere in the code, representing the path to the main images directory.
     - The function only considers immediate subdirectories of IMAGES_FOLDER, not nested directories.
     """
+    if images_folder is None:
+        images_folder = IMAGES_FOLDER
+    
+    # Check if the images folder exists
+    if not os.path.exists(images_folder):
+        return []  # Return empty list if folder doesn't exist
+    
     today = (datetime.now() + timedelta(hours=time_offset)).strftime("%Y%m%d")
-    return [os.path.join(IMAGES_FOLDER, d) for d in os.listdir(IMAGES_FOLDER) if d.startswith(today)]
+    return [os.path.join(images_folder, d) for d in os.listdir(images_folder) if d.startswith(today)]
 
 def prompt_user_for_folder_selection(folders):
     """
@@ -622,6 +686,10 @@ def create_session(USER_AGENTS, proxies, webpage):
     Returns:
         requests.Session or None: A session object if successful, None otherwise.
     """
+    if not USER_AGENTS:
+        message_processor("No user agents provided to create_session", "error")
+        return None
+        
     session = requests.Session()
     session.headers.update({
         "User-Agent": choice(USER_AGENTS),
@@ -633,7 +701,19 @@ def create_session(USER_AGENTS, proxies, webpage):
     if proxies:
         session.proxies.update(proxies)
 
-    # Perform an initial request to verify connectivity
+    # Check if webpage appears to be a direct image/video stream
+    # Common patterns: .jpg, .jpeg, .png, .mjpg, .mjpeg, video.mjpg, etc.
+    image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.mjpg', '.mjpeg', 'video.mjpg', 'video.mjpeg')
+    is_direct_image = any(webpage.lower().endswith(ext) or ext in webpage.lower() for ext in image_extensions)
+    
+    if is_direct_image:
+        # Skip connectivity test for direct image URLs
+        message_processor("Direct image/stream URL detected - skipping session verification", "info")
+        log_message = f"Session Created (direct image): {session.headers.values()}"
+        logging.info(log_jamming(log_message))
+        return session
+
+    # Perform an initial request to verify connectivity for regular webpages
     try:
         response = session.get(webpage, timeout=10)
         response.raise_for_status()  # Raises a HTTPError for bad responses
@@ -1150,18 +1230,25 @@ def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
         message_processor(f"Failed to send notification: {e}", "error")
         return False
 
-def sun_schedule(SUN_URL):
+def sun_schedule(SUN_URL, user_agents=None):
     """
     Fetches and parses the HTML content from the specified URL.
 
     Args:
         SUN_URL (str): The URL to fetch the sun schedule from.
+        user_agents (list, optional): List of user agent strings. If None, uses global USER_AGENTS.
 
     Returns:
         BeautifulSoup object or None: Parsed HTML content if successful, None otherwise.
     """
     try:
-        user_agent = choice(USER_AGENTS)
+        if user_agents is None:
+            user_agents = USER_AGENTS
+        if not user_agents:
+            # Fallback user agent if list is empty
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        else:
+            user_agent = choice(user_agents)
         headers = {"User-Agent": user_agent}
         response = requests.get(SUN_URL, headers=headers)
         response.raise_for_status()  # Raise an HTTPError for bad responses

@@ -2,25 +2,34 @@
 # hourglass.sh
 set -e
 
+# Get project name from first argument (required)
+PROJECT_NAME="$1"
+if [ -z "$PROJECT_NAME" ]; then
+    echo "Error: Project name is required"
+    echo "Usage: $0 <project_name> [options]"
+    echo "Example: $0 super_secret_project"
+    exit 1
+fi
+
+CONFIG_FILE="configs/${PROJECT_NAME}.json"
+shift  # Remove project name from arguments
+
 # Function to activate virtual environment and run Python command
 run_python_command() {
     venv/bin/python3 -c "$1"
 }
 
-# Check if config.json exists, if not run initial setup
-if [ ! -f "config.json" ]; then
-    echo "No configuration found. Running initial setup..."
-    venv/bin/python3 initial_setup.py
-    if [ $? -ne 0 ]; then
-        echo "Setup failed. Please run initial_setup.py manually."
-        exit 1
-    fi
+# Check if config file exists, if not run setup
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Configuration file not found: $CONFIG_FILE"
+    echo "Please run: python timelapse_setup.py"
+    exit 1
 fi
 
 # Check if we're already in a tmux session
 if [ -n "$TMUX" ]; then
     echo "Already in a tmux session. Running HourGlass directly."
-    run_python_command "import main; main.main()"
+    venv/bin/python3 main.py "$PROJECT_NAME" "$@"
     exit 0
 fi
 
@@ -37,7 +46,7 @@ import os
 import json
 sys.path.append(os.getcwd())
 try:
-    with open('config.json', 'r') as f:
+    with open('$CONFIG_FILE', 'r') as f:
         config = json.load(f)
     log_file = os.path.join(config['files_and_folders']['LOGGING_FOLDER'], config['files_and_folders']['LOG_FILE_NAME'])
     session_name = config.get('tmux', {}).get('session_name', 'hourglass-timelapse')
@@ -68,8 +77,11 @@ fi
 # Pass any arguments to the Python script (like --no-time-check)
 ARGS="$*"
 
+# Build the python command with project name
+PYTHON_CMD="venv/bin/python main.py $PROJECT_NAME $ARGS"
+
 exec tmux new-session -s "$SESSION_NAME" \; \
-    send-keys "echo 'Starting HourGlass Timelapse System...'; venv/bin/python main.py $ARGS" C-m \; \
+    send-keys "echo 'Starting HourGlass Timelapse System...'; $PYTHON_CMD" C-m \; \
     split-window -v -l 20 \; \
     select-pane -t 1 \; \
     send-keys "sleep 5 && tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m \; \

@@ -94,47 +94,43 @@ DEFAULT_CONFIG = {
 }
 setup_logging(DEFAULT_CONFIG)
 
-def load_config():
+def load_config(config_path=None):
     """
-    Load, create, or update configuration settings from a 'config.json' file.
+    Load, create, or update configuration settings from a config file.
 
     This function manages the configuration file for the application. It performs the following operations:
-    1. Attempts to load an existing 'config.json' file.
-    2. If the file doesn't exist, creates a new one with default settings.
+    1. Attempts to load an existing config file.
+    2. If the file doesn't exist, returns None (configs should be created via timelapse_setup.py).
     3. If the file exists but has an older version, updates it to the current version.
-    4. Ensures the config file is set to read-only for security.
+
+    Parameters:
+    config_path (str, optional): Path to the configuration file. Must be provided.
 
     The function uses several internal helper functions:
     - create_default_config(): Creates a dictionary with default configuration settings.
     - update_config(config): Updates an existing config to the current version, preserving existing values where possible.
-
-    Global Constants:
-    - CONFIG_FILE: Name of the configuration file ('config.json').
-    - LOCAL_PATH: Path to the directory containing this script.
-    - CONFIG_PATH: Full path to the config file.
-    - CURRENT_VERSION: Current version number of the configuration structure.
 
     Returns:
     dict or None: A dictionary containing the configuration settings if successful.
                   None if there was an error in loading or parsing the config file.
 
     Side Effects:
-    - May create or modify the 'config.json' file.
+    - May modify the config file if updating to a new version.
     - Logs information about config file updates or errors.
-    - Prints messages to the console in case of file creation or errors.
 
     Raises:
     FileNotFoundError: Caught internally if the config file doesn't exist.
     json.JSONDecodeError: Caught internally if there's an error parsing the JSON.
 
     Note:
-    - The function attempts to set the config file to read-only but will proceed even if this fails.
     - The configuration includes settings for proxies, authentication, file paths, URLs, and other application-specific data.
     - User agents list is included in the config for web scraping purposes.
     """
-    CONFIG_FILE = 'config.json'
-    LOCAL_PATH = Path(__file__).resolve().parent
-    CONFIG_PATH = Path.joinpath(LOCAL_PATH, CONFIG_FILE)
+    if not config_path:
+        logging.error("No config path provided to load_config")
+        return None
+    
+    CONFIG_PATH = Path(config_path)
     
     def create_default_config():
         """
@@ -332,10 +328,8 @@ def load_config():
         logging.info("Updated configuration written to file")
 
     except FileNotFoundError:
-        logging.warning(f"config.json not found at {CONFIG_PATH}; creating with default values.")
-        config = create_default_config()
-        with open(CONFIG_PATH, 'w') as file:
-            json.dump(config, file, indent=2)
+        logging.warning(f"Configuration file not found at {CONFIG_PATH}")
+        return None
     
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
@@ -350,94 +344,88 @@ def load_config():
 
         return config
 
-# Load the configuration
-config = load_config()
+# Don't load any configuration on module import
+# Configuration will be loaded by main.py with specific project path
+# Set placeholder values that will be overwritten when config is loaded
 
-if config:
-    # Project settings
-    PROJECT_NAME = config.get('project', {}).get('name', 'default')
-    PROJECT_DESCRIPTION = config.get('project', {}).get('description', '')
-    
-    # Capture settings
-    IMAGE_PATTERN = config.get('capture', {}).get('IMAGE_PATTERN', f'{PROJECT_NAME}.*.jpg')
-    FILENAME_FORMAT = config.get('capture', {}).get('FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.%H%M%S.jpg')
-    CAPTURE_INTERVAL = config.get('capture', {}).get('CAPTURE_INTERVAL', 30)
-    MAX_RETRIES = config.get('capture', {}).get('MAX_RETRIES', 3)
-    RETRY_DELAY = config.get('capture', {}).get('RETRY_DELAY', 5)
-    
-    # Video settings
-    VIDEO_FPS = config.get('video', {}).get('FPS', 10)
-    VIDEO_FORMAT = config.get('video', {}).get('OUTPUT_FORMAT', 'mp4')
-    VIDEO_CODEC = config.get('video', {}).get('CODEC', 'libx264')
-    VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
-    
-    # Network settings
-    PROXIES = config.get('proxies', {})
-    
-    # Sun/time settings
-    SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
-    SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
-    SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
-    SUN_URL = config.get('sun', {}).get('URL', '')
-    TIME_OFFSET_HOURS = config.get('sun', {}).get('TIME_OFFSET_HOURS', 0)
-    
-    # File and folder settings
-    PROJECT_BASE = config['files_and_folders'].get('PROJECT_BASE', os.path.join(Path.home(), 'HourGlass', PROJECT_NAME))
-    VIDEO_FOLDER = config['files_and_folders'].get('VIDEO_FOLDER', os.path.join(PROJECT_BASE, 'video'))
-    IMAGES_FOLDER = config['files_and_folders'].get('IMAGES_FOLDER', os.path.join(PROJECT_BASE, 'images'))
-    VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
-    LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
-    AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
-    LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
-    LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
-    
-    # URL settings
-    IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
-    WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
-    
-    # Output symbols
-    GREEN_CIRCLE = config.get('output_symbols', {}).get('GREEN_CIRCLE', '\U0001F7E2')
-    RED_CIRCLE = config.get('output_symbols', {}).get('RED_CIRCLE', '\U0001F534')
-    
-    # User agents
-    USER_AGENTS = config.get('user_agents', [])
-    
-    # Alert settings
-    ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
-    NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
-    NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
-    
-    # Music settings
-    MUSIC_ENABLED = config.get('music', {}).get('enabled', False)
-    PIXABAY_API_KEY = config.get('music', {}).get('pixabay_api_key', '')
-    MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', [])
-    MUSIC_MIN_DURATION = config.get('music', {}).get('min_duration', 60)
-    MUSIC_GENRES = config.get('music', {}).get('preferred_genres', [])
-    
-    # YouTube settings
-    YOUTUBE_CLIENT_ID = config.get('auth', {}).get('youtube', {}).get('client_id', '')
-    YOUTUBE_CLIENT_SECRET = config.get('auth', {}).get('youtube', {}).get('client_secret', '')
-    YOUTUBE_REFRESH_TOKEN = config.get('auth', {}).get('youtube', {}).get('refresh_token', '')
-    YOUTUBE_PLAYLIST_NAME = config.get('auth', {}).get('youtube', {}).get('playlist_name', PROJECT_NAME)
-    
-    # Tmux settings
-    TMUX_SESSION_NAME = config.get('tmux', {}).get('session_name', f'hourglass-{PROJECT_NAME.lower()}')
-    TMUX_ENABLE_SPLIT = config.get('tmux', {}).get('enable_split', True)
-    TMUX_LOG_PANE_SIZE = config.get('tmux', {}).get('log_pane_size', 20)
-    
-    # Performance settings
-    MEMORY_LIMIT_MB = config.get('performance', {}).get('memory_limit_mb', 1024)
-    BATCH_SIZE = config.get('performance', {}).get('batch_size', 100)
-    PARALLEL_DOWNLOADS = config.get('performance', {}).get('parallel_downloads', 3)
-    CACHE_IMAGES = config.get('performance', {}).get('cache_images', True)
+# Project settings
+PROJECT_NAME = 'default'
+PROJECT_DESCRIPTION = ''
 
-    
-    today_short_date = datetime.now().strftime("%m%d%Y")
+# Capture settings
+IMAGE_PATTERN = 'default.*.jpg'
+FILENAME_FORMAT = 'default.%m%d%Y.%H%M%S.jpg'
+CAPTURE_INTERVAL = 30
+MAX_RETRIES = 3
+RETRY_DELAY = 5
 
-    logging.info("Configuration loaded successfully")
-else:
-    logging.error("Failed to load configuration. Exiting.")
-    sys.exit(1)
+# Video settings
+VIDEO_FPS = 10
+VIDEO_FORMAT = 'mp4'
+VIDEO_CODEC = 'libx264'
+VIDEO_FILENAME_FORMAT = 'default.%m%d%Y.mp4'
+
+# Network settings
+PROXIES = {}
+
+# Sun/time settings
+SUNRISE = '06:00:00'
+SUNSET = '19:00:00'
+SUNSET_TIME_ADD = 60
+SUN_URL = ''
+TIME_OFFSET_HOURS = 0
+
+# File and folder settings
+PROJECT_BASE = os.path.join(Path.home(), 'HourGlass', 'default')
+VIDEO_FOLDER = os.path.join(PROJECT_BASE, 'video')
+IMAGES_FOLDER = os.path.join(PROJECT_BASE, 'images')
+VALID_IMAGES_FILE = 'valid_images.json'
+LOGGING_FOLDER = os.path.join(PROJECT_BASE, 'logging')
+AUDIO_FOLDER = os.path.join(PROJECT_BASE, 'audio')
+LOG_FILE_NAME = 'timelapse.log'
+LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
+
+# URL settings
+IMAGE_URL = ''
+WEBPAGE = ''
+
+# Output symbols
+GREEN_CIRCLE = '\U0001F7E2'
+RED_CIRCLE = '\U0001F534'
+
+# User agents
+USER_AGENTS = []
+
+# Alert settings
+ALERTS_ENABLED = False
+NTFY_TOPIC = ''
+NTFY_URL = 'http://ntfy.sh/'
+
+# Music settings
+MUSIC_ENABLED = False
+PIXABAY_API_KEY = ''
+MUSIC_SEARCH_TERMS = []
+MUSIC_MIN_DURATION = 60
+MUSIC_GENRES = []
+
+# YouTube settings
+YOUTUBE_CLIENT_ID = ''
+YOUTUBE_CLIENT_SECRET = ''
+YOUTUBE_REFRESH_TOKEN = ''
+YOUTUBE_PLAYLIST_NAME = PROJECT_NAME
+
+# Tmux settings
+TMUX_SESSION_NAME = f'hourglass-{PROJECT_NAME.lower()}'
+TMUX_ENABLE_SPLIT = True
+TMUX_LOG_PANE_SIZE = 20
+
+# Performance settings
+MEMORY_LIMIT_MB = 1024
+BATCH_SIZE = 100
+PARALLEL_DOWNLOADS = 3
+CACHE_IMAGES = True
+
+today_short_date = datetime.now().strftime("%m%d%Y")
 
 def reload_config():
     """

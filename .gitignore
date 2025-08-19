@@ -1,11 +1,10 @@
 *.json
-rename.py
-audio/
-dups.py
-sun.py
-aps.py
-pixabay_debug/
 .DS_Store
+instructions.txt
+*_instructions.txt
+pixabay_debug/
+instructions/
+configs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -157,6 +156,7 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+.claude/
 
 # Cython debug symbols
 cython_debug/

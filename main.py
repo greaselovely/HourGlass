@@ -5,8 +5,9 @@ import os
 import cursor
 import argparse
 import subprocess
-# Don't import timelapse_config yet - it creates config.json on import
-# We'll import it after checking if config exists
+from pathlib import Path
+# Don't import timelapse_config yet - it may create default config
+# We'll import it after checking if project config exists
 
 
 # Configuration constants
@@ -34,7 +35,7 @@ def check_config_needs_setup(config):
     
     return len(critical_empty_fields) > 0, critical_empty_fields
 
-def import_dependencies():
+def import_dependencies(config_path=None):
     """Import all the dependencies after config check."""
     global message_processor, load_config, config, validate_config_quick
     global create_timelapse_main_loop, ConfigValidator, create_health_monitor
@@ -44,10 +45,47 @@ def import_dependencies():
     global setup_logging
     
     from timelapse_core import message_processor, CustomLogger, ImageDownloader
-    from timelapse_config import (load_config, config, 
-                                 PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, 
-                                 LOGGING_FOLDER, AUDIO_FOLDER, setup_logging)
+    from timelapse_config import load_config, setup_logging
     from timelapse_loop import create_timelapse_main_loop
+    
+    # Load the specific config
+    loaded_config = load_config(config_path)
+    if loaded_config:
+        # Import the config values globally
+        global config
+        config = loaded_config
+        
+        # Update all the global variables from the loaded config
+        global SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD
+        global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
+        global USER_AGENTS, PROXIES, PROJECT_NAME, VALID_IMAGES_FILE
+        global VIDEO_FILENAME_FORMAT, LOGGING_FILE
+        
+        # Extract values from loaded config
+        SUN_URL = config.get('sun', {}).get('URL', '')
+        SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
+        SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
+        SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
+        IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
+        WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
+        
+        # Extract user agents and proxies
+        USER_AGENTS = config.get('user_agents', [])
+        PROXIES = config.get('proxies', {})
+        
+        PROJECT_NAME = config.get('project', {}).get('name', 'default')
+        PROJECT_BASE = config['files_and_folders'].get('PROJECT_BASE', os.path.join(Path.home(), 'HourGlass', PROJECT_NAME))
+        VIDEO_FOLDER = config['files_and_folders'].get('VIDEO_FOLDER', os.path.join(PROJECT_BASE, 'video'))
+        IMAGES_FOLDER = config['files_and_folders'].get('IMAGES_FOLDER', os.path.join(PROJECT_BASE, 'images'))
+        LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
+        AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
+        
+        # Extract additional file and format settings
+        VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
+        LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
+        LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
+        VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
+    
     from config_validator import ConfigValidator, validate_config_quick
     from health_monitor import create_health_monitor
     from moviepy.editor import ImageSequenceClip, AudioFileClip
@@ -55,49 +93,27 @@ def import_dependencies():
     from memory_optimizer import memory_managed_operation, monitor_resource_usage
     
     # Import everything else from timelapse_core and timelapse_config
+    # BUT don't overwrite the variables we just set from the loaded config
     import timelapse_core
     import timelapse_config
+    
+    # Variables to preserve (that we just set from the loaded config)
+    preserve_vars = {
+        'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD',
+        'PROJECT_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER',
+        'USER_AGENTS', 'PROXIES', 'PROJECT_NAME', 'VALID_IMAGES_FILE',
+        'VIDEO_FILENAME_FORMAT', 'LOGGING_FILE', 'config'
+    }
+    
     for name in dir(timelapse_core):
-        if not name.startswith('_'):
+        if not name.startswith('_') and name not in preserve_vars:
             globals()[name] = getattr(timelapse_core, name)
     for name in dir(timelapse_config):
-        if not name.startswith('_'):
+        if not name.startswith('_') and name not in preserve_vars:
             globals()[name] = getattr(timelapse_config, name)
+    
+    return loaded_config
 
-def run_initial_setup():
-    """
-    Run the initial setup script interactively.
-    
-    Returns True if setup completed successfully.
-    """
-    try:
-        print("\n" + "="*60)
-        print(" HourGlass needs initial configuration")
-        print("="*60)
-        print("\nThe configuration is missing critical values:")
-        print("- IMAGE_URL: The URL of your webcam image")
-        print("- WEBPAGE: The webpage containing the webcam")
-        print("- sun.URL: (Optional) URL for sunrise/sunset times")
-        print("\nStarting interactive setup...\n")
-        
-        # Run the initial_setup.py script
-        result = subprocess.run([sys.executable, "initial_setup.py"], 
-                              check=False)
-        
-        if result.returncode == 0:
-            print("\nSetup completed successfully!")
-            return True
-        else:
-            print("\nSetup was cancelled or failed.")
-            return False
-    
-    except KeyboardInterrupt:
-        print("\n\nSetup interrupted by user. Exiting gracefully.")
-        return False
-        
-    except Exception as e:
-        print(f"\nError running setup: {e}")
-        return False
 
 def find_available_run_folders():
     """
@@ -373,6 +389,8 @@ def main():
     
     # ===== COMMAND LINE ARGUMENTS - MOVED UP FIRST =====
     parser = argparse.ArgumentParser(description="HourGlass Timelapse System - Automated Webcam Capture")
+    parser.add_argument("project", 
+                       help="Project name (uses configs/<project>.json)")
     parser.add_argument("-m", "--movie", action="store_true", 
                        help="Generate movie only without capturing new images")
     parser.add_argument("--health", action="store_true", 
@@ -388,48 +406,36 @@ def main():
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
-    # Check if config.json exists first
-    if not os.path.exists("config.json"):
-        # No config exists, run setup
-        if not args.health and not args.validate:  # Don't run setup for utility commands
-            if run_initial_setup():
-                # Now import dependencies and load the newly created config
-                import_dependencies()
-                if not load_config():
-                    message_processor("Failed to load configuration after setup. Exiting.", "error")
-                    return
-            else:
-                print("Initial setup required but was not completed. Exiting.")
-                return
-        else:
-            print("No configuration found. Run without --health or --validate to set up.")
-            return
-    else:
-        # Config exists, import dependencies and load it
-        import_dependencies()
-        if not load_config():
-            message_processor("Failed to load configuration. Exiting.", "error")
-            return
-        
-        # Check if the existing configuration needs setup
-        needs_setup, missing_fields = check_config_needs_setup(config)
-        if needs_setup:
-            if not args.health and not args.validate:  # Don't run setup for utility commands
-                if run_initial_setup():
-                    # Reload configuration after setup
-                    if not load_config():
-                        message_processor("Failed to reload configuration after setup. Exiting.", "error")
-                        return
-                    # Check again if setup was successful with the newly loaded config
-                    from timelapse_config import config as reloaded_config
-                    needs_setup, missing_fields = check_config_needs_setup(reloaded_config)
-                    if needs_setup:
-                        message_processor("Setup incomplete. Critical fields still missing.", "error")
-                        message_processor(f"Missing: {', '.join(missing_fields)}", "error")
-                        return
-                else:
-                    message_processor("Initial setup required but was not completed. Exiting.", "error")
-                    return
+    # Project name is now required
+    config_path = f"configs/{args.project}.json"
+    
+    # Check if config exists
+    if not os.path.exists(config_path):
+        print("\n" + "="*60)
+        print(f" HourGlass - Project '{args.project}' Not Found")
+        print("="*60)
+        print(f"\nConfiguration file not found: {config_path}")
+        print("Please run: python timelapse_setup.py")
+        sys.exit(1)
+    
+    # Import dependencies and load config
+    config = import_dependencies(config_path)
+    if not config:
+        print(f"Failed to load configuration from {config_path}. Exiting.")
+        sys.exit(1)
+    
+    # Check if the existing configuration needs setup
+    needs_setup, missing_fields = check_config_needs_setup(config)
+    if needs_setup:
+        print("\n" + "="*60)
+        print(" Configuration Error")
+        print("="*60)
+        print("\nThe configuration is missing critical values:")
+        for field in missing_fields:
+            print(f"  - {field}")
+        print(f"\nPlease run: python timelapse_setup.py")
+        print(f"Then select option to update project: {args.project}")
+        sys.exit(1)
     
     time_offset = 0
     if "sun" in config and "TIME_OFFSET_HOURS" in config["sun"]:
@@ -492,7 +498,7 @@ def main():
         return
 
     # ===== RUN SETUP =====
-    run_id = get_or_create_run_id(time_offset)
+    run_id = get_or_create_run_id(time_offset, IMAGES_FOLDER)
     message_processor(f"Run ID: {run_id}", "info")
     
     # Create run-specific folders
@@ -550,7 +556,7 @@ def main():
         # ===== SUN SCHEDULE CALCULATION =====
         if not args.no_time_check:
             message_processor("Fetching sun schedule")
-            soup = sun_schedule(SUN_URL)
+            soup = sun_schedule(SUN_URL, USER_AGENTS)
 
             sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', SUNRISE)
             sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
@@ -621,7 +627,8 @@ def main():
             proxies=PROXIES,
             webpage=WEBPAGE,
             health_monitor=health_monitor,  # Pass health monitor
-            time_offset=time_offset
+            time_offset=time_offset,
+            config_path=config_path  # Pass the config file path
         )
         
         message_processor("Enhanced downloader initialized", "info")
