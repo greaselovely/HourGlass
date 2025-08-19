@@ -657,6 +657,13 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
     log_func(message)
 
     if ntfy:
+        # Get NTFY_TOPIC from global namespace
+        import sys
+        main_module = sys.modules.get('__main__')
+        if main_module and hasattr(main_module, 'NTFY_TOPIC'):
+            NTFY_TOPIC = main_module.NTFY_TOPIC
+        else:
+            from timelapse_config import NTFY_TOPIC
         send_to_ntfy(NTFY_TOPIC, message)
 
 def activity(char, run_images_folder, image_size, time_stamp=""):

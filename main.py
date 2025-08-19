@@ -59,7 +59,7 @@ def import_dependencies(config_path=None):
         global SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD
         global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
         global USER_AGENTS, PROXIES, PROJECT_NAME, VALID_IMAGES_FILE
-        global VIDEO_FILENAME_FORMAT, LOGGING_FILE
+        global VIDEO_FILENAME_FORMAT, LOGGING_FILE, NTFY_TOPIC, NTFY_URL, ALERTS_ENABLED
         
         # Extract values from loaded config
         SUN_URL = config.get('sun', {}).get('URL', '')
@@ -85,6 +85,11 @@ def import_dependencies(config_path=None):
         LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
         LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
         VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
+        
+        # Extract alert settings
+        NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
+        NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
+        ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
     
     from config_validator import ConfigValidator, validate_config_quick
     from health_monitor import create_health_monitor
@@ -102,7 +107,8 @@ def import_dependencies(config_path=None):
         'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD',
         'PROJECT_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER',
         'USER_AGENTS', 'PROXIES', 'PROJECT_NAME', 'VALID_IMAGES_FILE',
-        'VIDEO_FILENAME_FORMAT', 'LOGGING_FILE', 'config'
+        'VIDEO_FILENAME_FORMAT', 'LOGGING_FILE', 'config',
+        'NTFY_TOPIC', 'NTFY_URL', 'ALERTS_ENABLED'
     }
     
     for name in dir(timelapse_core):
