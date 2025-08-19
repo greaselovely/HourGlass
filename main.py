@@ -668,8 +668,8 @@ def main():
     
     # ===== COMMAND LINE ARGUMENTS - MOVED UP FIRST =====
     parser = argparse.ArgumentParser(description="HourGlass Timelapse System - Automated Webcam Capture")
-    parser.add_argument("project", 
-                       help="Project name (uses configs/<project>.json)")
+    parser.add_argument("project", nargs='?', default=None,
+                       help="Project name (uses configs/<project>.json). If not provided, runs setup.")
     parser.add_argument("-m", "--movie", action="store_true", 
                        help="Generate movie only without capturing new images")
     parser.add_argument("--health", action="store_true", 
@@ -692,8 +692,47 @@ def main():
                        help="Override user agent for testing (use 'curl' for curl UA, 'chrome' for Chrome, etc.)")
     args = parser.parse_args()
     
+    # ===== AUTO-SETUP WHEN NO PROJECT OR CONFIG MISSING =====
+    # If no project specified, run setup
+    if args.project is None:
+        print("\n" + "="*60)
+        print(" HourGlass - No Project Specified")
+        print("="*60)
+        
+        # Check if stdin is interactive
+        if sys.stdin.isatty():
+            print("\nStarting setup wizard...")
+            
+            # Import and run setup
+            try:
+                from timelapse_setup import main as setup_main
+                setup_main()
+                print("\nSetup complete. Please run HourGlass again with your project name.")
+                sys.exit(0)
+            except (KeyboardInterrupt, EOFError):
+                print("\n\nSetup cancelled by user.")
+                sys.exit(1)
+            except Exception as e:
+                print(f"\nError running setup: {e}")
+                print("Please run: python timelapse_setup.py")
+                sys.exit(1)
+        else:
+            # Non-interactive mode
+            print("\nNo project specified. Available options:")
+            print("  python main.py <project_name>    # Run existing project")
+            print("  python timelapse_setup.py         # Create new project")
+            
+            # Check for existing configs
+            config_dir = Path("configs")
+            if config_dir.exists():
+                configs = list(config_dir.glob("*.json"))
+                if configs:
+                    print("\nExisting projects:")
+                    for config_file in configs:
+                        print(f"  - {config_file.stem}")
+            sys.exit(1)
+    
     # ===== CONFIGURATION AND VALIDATION =====
-    # Project name is now required
     config_path = f"configs/{args.project}.json"
     
     # Check if config exists
@@ -702,8 +741,47 @@ def main():
         print(f" HourGlass - Project '{args.project}' Not Found")
         print("="*60)
         print(f"\nConfiguration file not found: {config_path}")
-        print("Please run: python timelapse_setup.py")
-        sys.exit(1)
+        
+        # Check if stdin is interactive (terminal) or not (piped/redirected)
+        if sys.stdin.isatty():
+            print("Starting setup wizard for new project...")
+            
+            # Import and run setup for this specific project
+            try:
+                from timelapse_setup import create_initial_config, save_config, create_instructions_file
+                
+                # Create new config for this project
+                config = create_initial_config(project_name=args.project)
+                
+                if config:
+                    # Save the configuration
+                    if save_config(config, args.project):
+                        create_instructions_file(config, args.project)
+                        print("\n" + "="*60)
+                        print(f" Project '{args.project}' setup complete!")
+                        print("="*60)
+                        print(f"\nYou can now run: python main.py {args.project}")
+                        sys.exit(0)
+                    else:
+                        print("\nFailed to save configuration.")
+                        sys.exit(1)
+                else:
+                    print("\nSetup cancelled.")
+                    sys.exit(1)
+            except (KeyboardInterrupt, EOFError):
+                print("\n\nSetup cancelled by user.")
+                sys.exit(1)
+            except Exception as e:
+                print(f"\nError running setup: {e}")
+                print("Please run: python timelapse_setup.py")
+                sys.exit(1)
+        else:
+            # Non-interactive mode - just show instructions
+            print("\nTo create a new project, run interactively:")
+            print(f"  python main.py {args.project}")
+            print("\nOr use the setup wizard:")
+            print("  python timelapse_setup.py")
+            sys.exit(1)
     
     # Import dependencies and load config
     config = import_dependencies(config_path)
