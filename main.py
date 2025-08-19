@@ -6,6 +6,7 @@ import cursor
 import argparse
 import subprocess
 from pathlib import Path
+from datetime import datetime, timedelta
 # Don't import timelapse_config yet - it may create default config
 # We'll import it after checking if project config exists
 
@@ -120,6 +121,146 @@ def import_dependencies(config_path=None):
     
     return loaded_config
 
+def test_audio_download(config, duration_seconds=60, debug=False):
+    """
+    Test audio download functionality independently.
+    
+    Args:
+        config: The loaded configuration
+        duration_seconds: Target duration in seconds for audio
+        debug: Enable debug mode to save HTML/JSON responses
+    """
+    from datetime import datetime
+    from timelapse_core import audio_download, concatenate_songs, message_processor
+    from moviepy.editor import AudioFileClip
+    import os
+    
+    print("\n" + "="*60)
+    print(" Audio Download Test Mode")
+    print("="*60)
+    
+    # Get project name and create test audio folder
+    project_name = config.get('project', {}).get('name', 'default')
+    project_base = config['files_and_folders'].get('PROJECT_BASE', 
+                    os.path.join(Path.home(), 'HourGlass', project_name))
+    audio_folder = config['files_and_folders'].get('AUDIO_FOLDER', 
+                    os.path.join(project_base, 'audio'))
+    
+    # Create test subfolder with timestamp
+    test_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    test_audio_folder = os.path.join(audio_folder, f'test_{test_timestamp}')
+    os.makedirs(test_audio_folder, exist_ok=True)
+    
+    print(f"\nProject: {project_name}")
+    print(f"Test folder: {test_audio_folder}")
+    print(f"Target duration: {duration_seconds} seconds")
+    print(f"Debug mode: {'ON' if debug else 'OFF'}")
+    
+    # Convert duration to milliseconds (as expected by audio_download)
+    duration_ms = duration_seconds * 1000
+    
+    print("\n" + "-"*40)
+    print("Starting audio download test...")
+    print("-"*40 + "\n")
+    
+    try:
+        # Call the audio download function
+        audio_result = audio_download(duration_ms, test_audio_folder, debug)
+        
+        if audio_result and len(audio_result) > 0:
+            print(f"\nSuccessfully downloaded {len(audio_result)} audio file(s)")
+            
+            # Display info about each downloaded file
+            total_duration = 0
+            for i, (file_path, duration_sec) in enumerate(audio_result, 1):
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                file_name = os.path.basename(file_path)
+                print(f"\n  File {i}: {file_name}")
+                print(f"    Duration: {duration_sec:.2f} seconds")
+                print(f"    Size: {file_size_mb:.2f} MB")
+                print(f"    Path: {file_path}")
+                total_duration += duration_sec
+            
+            print(f"\n  Total duration: {total_duration:.2f} seconds")
+            
+            # Test concatenation if multiple files
+            if len(audio_result) > 1:
+                print("\n" + "-"*40)
+                print("Testing audio concatenation...")
+                print("-"*40)
+                
+                try:
+                    final_song = concatenate_songs(audio_result)
+                    if final_song:
+                        # Save concatenated audio for testing
+                        concat_path = os.path.join(test_audio_folder, "concatenated_test.mp3")
+                        final_song.write_audiofile(concat_path, logger=None)
+                        concat_size_mb = os.path.getsize(concat_path) / (1024 * 1024)
+                        
+                        print(f"\nConcatenation successful")
+                        print(f"  Output file: concatenated_test.mp3")
+                        print(f"  Duration: {final_song.duration:.2f} seconds")
+                        print(f"  Size: {concat_size_mb:.2f} MB")
+                        
+                        # Clean up MoviePy object
+                        final_song.close()
+                    else:
+                        print("\nConcatenation failed")
+                except Exception as e:
+                    print(f"\nConcatenation error: {e}")
+            
+            # Test audio playback capability
+            print("\n" + "-"*40)
+            print("Testing audio file integrity...")
+            print("-"*40)
+            
+            for i, (file_path, _) in enumerate(audio_result, 1):
+                try:
+                    audio_clip = AudioFileClip(file_path)
+                    print(f"\nFile {i} is valid and can be loaded by MoviePy")
+                    print(f"    Sample rate: {audio_clip.fps} Hz")
+                    print(f"    Channels: {audio_clip.nchannels}")
+                    audio_clip.close()
+                except Exception as e:
+                    print(f"\nFile {i} failed integrity check: {e}")
+            
+            print("\n" + "="*60)
+            print(" Audio Test Complete - SUCCESS")
+            print("="*60)
+            print(f"\nTest files saved in: {test_audio_folder}")
+            print("\nYou can manually review the downloaded audio files.")
+            
+            if debug:
+                print("\nDebug files saved in: pixabay_debug/")
+            
+            return True
+            
+        else:
+            print("\nFailed to download any audio files")
+            print("\nPossible issues:")
+            print("  1. Network connectivity problems")
+            print("  2. Pixabay API rate limiting")
+            print("  3. Changes to Pixabay website structure")
+            
+            if debug:
+                print("\nCheck pixabay_debug/ folder for HTML/JSON responses")
+            
+            print("\n" + "="*60)
+            print(" Audio Test Complete - FAILED")
+            print("="*60)
+            
+            return False
+            
+    except Exception as e:
+        print(f"\nAudio test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        print("\n" + "="*60)
+        print(" Audio Test Complete - ERROR")
+        print("="*60)
+        
+        return False
 
 def find_available_run_folders():
     """
@@ -409,6 +550,10 @@ def main():
                        help="Force folder selection prompt in movie mode")
     parser.add_argument("--debug", action="store_true",
                        help="Enable debug mode (saves Pixabay HTML/JSON responses)")
+    parser.add_argument("--test-audio", action="store_true",
+                       help="Test audio download functionality without capturing images")
+    parser.add_argument("--audio-duration", type=int, default=60,
+                       help="Duration in seconds for audio test (default: 60)")
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
@@ -475,6 +620,12 @@ def main():
         message_processor(f"Failed to start health monitoring: {e}", "warning")
         health_monitor = None
 
+    # Handle audio test mode
+    if args.test_audio:
+        message_processor(f"Audio test mode for project: {args.project}", "info")
+        test_result = test_audio_download(config, args.audio_duration, args.debug)
+        sys.exit(0 if test_result else 1)
+    
     # Handle utility commands
     if args.health:
         health_monitor = create_health_monitor(config)
