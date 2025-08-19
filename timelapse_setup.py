@@ -288,7 +288,7 @@ def create_initial_config(existing_config=None, project_name=None):
     # Proxy settings
     print("\n[7/8] Proxy Configuration (optional)")
     print("-" * 40)
-    print("Configure proxy settings for network requests (useful for bypassing IP blocks)")
+    print("Configure proxy settings for network requests")
     
     use_proxy = input("Do you need to use a proxy? (y/n) [n]: ").strip().lower() == 'y'
     
