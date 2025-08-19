@@ -121,7 +121,128 @@ def import_dependencies(config_path=None):
     
     return loaded_config
 
-def test_audio_download(config, duration_seconds=60, debug=False):
+def test_network_connectivity():
+    """Test basic network connectivity to Pixabay."""
+    import subprocess
+    import platform
+    
+    print("\n" + "-"*40)
+    print("Network Connectivity Test")
+    print("-"*40)
+    
+    tests_passed = 0
+    tests_total = 0
+    
+    # Test 1: DNS resolution
+    print("\n1. Testing DNS resolution for pixabay.com...")
+    tests_total += 1
+    try:
+        import socket
+        ips = socket.gethostbyname_ex('pixabay.com')[2]
+        print(f"   SUCCESS: Resolved to IPs: {', '.join(ips)}")
+        tests_passed += 1
+    except Exception as e:
+        print(f"   FAILED: {e}")
+    
+    # Test 2: Ping test (if available)
+    print("\n2. Testing ping to pixabay.com...")
+    tests_total += 1
+    try:
+        ping_cmd = "ping" if platform.system().lower() == "windows" else "ping"
+        result = subprocess.run(
+            [ping_cmd, "-c", "4", "pixabay.com"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            print("   SUCCESS: Ping successful")
+            # Extract average ping time if possible
+            for line in result.stdout.split('\n'):
+                if 'avg' in line or 'Average' in line:
+                    print(f"   {line.strip()}")
+            tests_passed += 1
+        else:
+            print(f"   FAILED: Ping failed with return code {result.returncode}")
+    except subprocess.TimeoutExpired:
+        print("   FAILED: Ping timeout")
+    except Exception as e:
+        print(f"   WARNING: Could not run ping: {e}")
+        tests_total -= 1  # Don't count this test
+    
+    # Test 3: HTTP connectivity with curl
+    print("\n3. Testing HTTP access with curl...")
+    tests_total += 1
+    try:
+        result = subprocess.run(
+            ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{http_code}", "https://pixabay.com"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        status_code = result.stdout.strip()
+        if status_code == "200":
+            print(f"   SUCCESS: HTTP {status_code}")
+            tests_passed += 1
+        elif status_code == "403":
+            print(f"   WARNING: HTTP {status_code} - Possible IP blocking")
+        else:
+            print(f"   FAILED: HTTP {status_code}")
+    except subprocess.TimeoutExpired:
+        print("   FAILED: Request timeout")
+    except FileNotFoundError:
+        print("   SKIPPED: curl not installed")
+        tests_total -= 1
+    except Exception as e:
+        print(f"   FAILED: {e}")
+    
+    # Test 4: Test with different user agents
+    print("\n4. Testing with different User-Agents...")
+    tests_total += 1
+    user_agents = [
+        ("curl", "curl/7.68.0"),
+        ("chrome", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+        ("firefox", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0")
+    ]
+    
+    any_success = False
+    for name, ua in user_agents:
+        try:
+            result = subprocess.run(
+                ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{http_code}", 
+                 "-H", f"User-Agent: {ua}", "https://pixabay.com"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            status_code = result.stdout.strip()
+            status = "OK" if status_code == "200" else f"HTTP {status_code}"
+            print(f"   {name:10} -> {status}")
+            if status_code == "200":
+                any_success = True
+        except:
+            pass
+    
+    if any_success:
+        print("   SUCCESS: At least one user agent works")
+        tests_passed += 1
+    else:
+        print("   FAILED: All user agents blocked or failed")
+    
+    # Summary
+    print("\n" + "-"*40)
+    print(f"Network Test Summary: {tests_passed}/{tests_total} tests passed")
+    if tests_passed < tests_total:
+        print("\nTroubleshooting suggestions:")
+        print("1. Check if your server's IP is blocked by Pixabay")
+        print("2. Try using a VPN or proxy")
+        print("3. Verify firewall rules allow outbound HTTPS")
+        print("4. Consider rate limiting - wait before retrying")
+    print("-"*40)
+    
+    return tests_passed == tests_total
+
+def test_audio_download(config, duration_seconds=60, debug=False, test_network=False, user_agent_override=None):
     """
     Test audio download functionality independently.
     
@@ -129,6 +250,8 @@ def test_audio_download(config, duration_seconds=60, debug=False):
         config: The loaded configuration
         duration_seconds: Target duration in seconds for audio
         debug: Enable debug mode to save HTML/JSON responses
+        test_network: Run network connectivity tests first
+        user_agent_override: Override the user agent for testing
     """
     from datetime import datetime
     from timelapse_core import audio_download, concatenate_songs, message_processor
@@ -138,6 +261,15 @@ def test_audio_download(config, duration_seconds=60, debug=False):
     print("\n" + "="*60)
     print(" Audio Download Test Mode")
     print("="*60)
+    
+    # Run network tests if requested
+    if test_network:
+        network_ok = test_network_connectivity()
+        if not network_ok:
+            print("\nNetwork tests indicate potential connectivity issues.")
+            response = input("Continue with audio download test anyway? (y/n): ")
+            if response.lower() != 'y':
+                return False
     
     # Get project name and create test audio folder
     project_name = config.get('project', {}).get('name', 'default')
@@ -554,6 +686,10 @@ def main():
                        help="Test audio download functionality without capturing images")
     parser.add_argument("--audio-duration", type=int, default=60,
                        help="Duration in seconds for audio test (default: 60)")
+    parser.add_argument("--test-network", action="store_true",
+                       help="Include network connectivity tests in audio test mode")
+    parser.add_argument("--user-agent", type=str, default=None,
+                       help="Override user agent for testing (use 'curl' for curl UA, 'chrome' for Chrome, etc.)")
     args = parser.parse_args()
     
     # ===== CONFIGURATION AND VALIDATION =====
@@ -623,7 +759,13 @@ def main():
     # Handle audio test mode
     if args.test_audio:
         message_processor(f"Audio test mode for project: {args.project}", "info")
-        test_result = test_audio_download(config, args.audio_duration, args.debug)
+        test_result = test_audio_download(
+            config, 
+            args.audio_duration, 
+            args.debug,
+            args.test_network,
+            args.user_agent
+        )
         sys.exit(0 if test_result else 1)
     
     # Handle utility commands
