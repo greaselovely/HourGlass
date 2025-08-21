@@ -1,88 +1,90 @@
 #!/usr/bin/env bash
 # hourglass.sh
-set -e
+set -euo pipefail
 
-# Get project name from first argument (required)
-PROJECT_NAME="$1"
+PROJECT_NAME="${1:-}"
 if [ -z "$PROJECT_NAME" ]; then
     echo "Error: Project name is required"
     echo "Usage: $0 <project_name> [options]"
-    echo "Example: $0 super_secret_project"
     exit 1
 fi
 
 CONFIG_FILE="configs/${PROJECT_NAME}.json"
-shift  # Remove project name from arguments
+shift
 
-# Function to activate virtual environment and run Python command
 run_python_command() {
     venv/bin/python3 -c "$1"
 }
 
-# Check if config file exists, if not run setup
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Configuration file not found: $CONFIG_FILE"
     echo "Please run: python timelapse_setup.py"
     exit 1
 fi
 
-# Check if we're already in a tmux session
-if [ -n "$TMUX" ]; then
+# If already inside tmux, just run directly
+if [ -n "${TMUX:-}" ]; then
     echo "Already in a tmux session. Running HourGlass directly."
-    venv/bin/python3 main.py "$PROJECT_NAME" "$@"
-    exit 0
+    exec venv/bin/python3 main.py "$PROJECT_NAME" "$@"
 fi
 
-# Check if tmux is installed
-if ! command -v tmux &> /dev/null; then
+# Require tmux
+if ! command -v tmux >/dev/null 2>&1; then
     echo "tmux is not installed. Please install it and try again."
     exit 1
 fi
 
-# Get the log file path and session name from config
+# Pull log path and session name from config
 CONFIG_DATA=$(run_python_command "
-import sys
-import os
-import json
-sys.path.append(os.getcwd())
-try:
-    with open('$CONFIG_FILE', 'r') as f:
-        config = json.load(f)
-    log_file = os.path.join(config['files_and_folders']['LOGGING_FOLDER'], config['files_and_folders']['LOG_FILE_NAME'])
-    session_name = config.get('tmux', {}).get('session_name', 'hourglass-timelapse')
-    print(f'{log_file}|{session_name}')
-except Exception as e:
-    print(f'Error reading config: {e}', file=sys.stderr)
-    sys.exit(1)
+import sys, os, json
+with open('$CONFIG_FILE','r') as f: config=json.load(f)
+log_file = os.path.join(config['files_and_folders']['LOGGING_FOLDER'], config['files_and_folders']['LOG_FILE_NAME'])
+session_name = config.get('tmux', {}).get('session_name', 'hourglass-timelapse')
+print(f'{log_file}|{session_name}')
 ")
-
-# Split the output
 IFS='|' read -r LOG_FILE SESSION_NAME <<< "$CONFIG_DATA"
-
-# Check if LOG_FILE is empty or contains an error message
-if [ -z "$LOG_FILE" ] || [[ "$LOG_FILE" == Error* ]]; then
-    echo "Failed to get configuration: $LOG_FILE"
+if [ -z "$LOG_FILE" ]; then
+    echo "Failed to get configuration"
     exit 1
 fi
 
 echo "Log file path: $LOG_FILE"
 echo "Session name: $SESSION_NAME"
 
-# Check if the session already exists
+# Interactive check: 1 if stdout is a TTY, else 0
+INTERACTIVE=0
+if [ -t 1 ]; then INTERACTIVE=1; fi
+
+# If session exists already
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "Session '$SESSION_NAME' already exists. Attaching to it."
-    exec tmux attach-session -t "$SESSION_NAME"
+    echo "Session '$SESSION_NAME' already exists."
+    if [ "$INTERACTIVE" -eq 1 ]; then
+        exec tmux attach -t "$SESSION_NAME"
+    else
+        # From cron: do not try to attach. Treat as already running.
+        exit 0
+    fi
 fi
 
-# Pass any arguments to the Python script (like --no-time-check)
+# Build the python command
 ARGS="$*"
+PYTHON_CMD="venv/bin/python3 main.py $PROJECT_NAME $ARGS"
 
-# Build the python command with project name
-PYTHON_CMD="venv/bin/python main.py $PROJECT_NAME $ARGS"
+# Ensure tmux does not keep dead panes
+tmux set -g remain-on-exit off >/dev/null 2>&1 || true
 
-exec tmux new-session -s "$SESSION_NAME" \; \
-    send-keys "echo 'Starting HourGlass Timelapse System...'; $PYTHON_CMD" C-m \; \
-    split-window -v -l 20 \; \
-    select-pane -t 1 \; \
-    send-keys "sleep 5 && tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m \; \
-    select-pane -t 0
+if [ "$INTERACTIVE" -eq 1 ]; then
+    # Interactive: create session, tail pane, then attach
+    tmux new-session -d -s "$SESSION_NAME"
+    tmux send-keys -t "$SESSION_NAME" \
+        "echo 'Starting HourGlass Timelapse System...'; $PYTHON_CMD; EXIT=\$?; tmux display-message 'HourGlass finished with code '\$EXIT; tmux kill-session -t \"$SESSION_NAME\"; exit \$EXIT" C-m
+    tmux split-window -t "$SESSION_NAME" -v -l 20
+    tmux select-pane -t "$SESSION_NAME":0.1
+    tmux send-keys -t "$SESSION_NAME":0.1 "sleep 5; tail -f '$LOG_FILE' || echo 'Failed to tail log file'" C-m
+    exec tmux attach -t "$SESSION_NAME"
+else
+    # Cron: start detached and auto-kill session when done. No attach, no tail.
+    tmux new-session -d -s "$SESSION_NAME" \
+        "bash -lc '$PYTHON_CMD; EXIT=\$?; tmux display-message \"HourGlass finished with code \$EXIT\"; tmux kill-session -t \"$SESSION_NAME\"; exit \$EXIT'"
+    echo "Started detached tmux session '$SESSION_NAME'."
+fi
