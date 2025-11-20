@@ -24,7 +24,7 @@ from datetime import datetime
 from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips
 
 
-from timelapse_config import *
+from .timelapse_config import *
 
 
 class CustomLogger(ProgressBarLogger):
@@ -663,7 +663,7 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
         if main_module and hasattr(main_module, 'NTFY_TOPIC'):
             NTFY_TOPIC = main_module.NTFY_TOPIC
         else:
-            from timelapse_config import NTFY_TOPIC
+            from .timelapse_config import NTFY_TOPIC
         send_to_ntfy(NTFY_TOPIC, message)
 
 def activity(char, run_images_folder, image_size, time_stamp=""):
@@ -831,6 +831,356 @@ def calculate_video_duration(num_images, fps) -> int:
     duration_sec = num_images / fps
     duration_ms = int(duration_sec * 1000)
     return duration_ms
+
+def manage_audio_cache(cache_folder, max_files):
+    """
+    Manages the audio cache folder using FIFO (First In, First Out) strategy.
+    Ensures the cache doesn't exceed max_files by removing oldest files.
+
+    Args:
+        cache_folder (str or Path): Path to the audio cache folder
+        max_files (int): Maximum number of files to keep in cache
+
+    Returns:
+        int: Number of files removed
+    """
+    cache_folder = Path(cache_folder)
+
+    # Create cache folder if it doesn't exist
+    cache_folder.mkdir(parents=True, exist_ok=True)
+
+    # Get all audio files sorted by modification time (oldest first)
+    audio_files = sorted(
+        cache_folder.glob('*.mp3'),
+        key=lambda x: x.stat().st_mtime
+    )
+
+    # Calculate how many files to remove
+    files_to_remove = len(audio_files) - max_files
+
+    if files_to_remove <= 0:
+        return 0
+
+    # Remove oldest files
+    removed_count = 0
+    for audio_file in audio_files[:files_to_remove]:
+        try:
+            audio_file.unlink()
+            removed_count += 1
+            message_processor(f"Removed old cached audio: {audio_file.name}", "info")
+        except Exception as e:
+            message_processor(f"Failed to remove cached audio {audio_file.name}: {e}", "error")
+
+    return removed_count
+
+def add_to_audio_cache(audio_path, cache_folder, max_files):
+    """
+    Adds a downloaded audio file to the cache and manages cache size.
+
+    Args:
+        audio_path (str or Path): Path to the audio file to cache
+        cache_folder (str or Path): Path to the audio cache folder
+        max_files (int): Maximum number of files to keep in cache
+
+    Returns:
+        Path: Path to the cached file, or None if caching failed
+    """
+    try:
+        cache_folder = Path(cache_folder)
+        audio_path = Path(audio_path)
+
+        # Create cache folder if it doesn't exist
+        cache_folder.mkdir(parents=True, exist_ok=True)
+
+        # Generate cache filename with timestamp to avoid collisions
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        cache_filename = f"cached_{timestamp}_{audio_path.name}"
+        cache_path = cache_folder / cache_filename
+
+        # Copy file to cache
+        shutil.copy2(audio_path, cache_path)
+        message_processor(f"Added to cache: {cache_filename}", "info")
+
+        # Manage cache size
+        manage_audio_cache(cache_folder, max_files)
+
+        return cache_path
+
+    except Exception as e:
+        message_processor(f"Failed to add audio to cache: {e}", "error")
+        return None
+
+def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = None) -> tuple[str | None, float | None]:
+    """
+    Retrieves a random audio file from the cache.
+
+    Args:
+        cache_folder (str or Path): Path to the audio cache folder
+        min_duration_sec (float, optional): Minimum duration in seconds
+
+    Returns:
+        tuple: (audio_path, duration_ms) or (None, None) if no suitable file found
+    """
+    try:
+        cache_folder = Path(cache_folder)
+
+        if not cache_folder.exists():
+            message_processor("Audio cache folder does not exist", "warning")
+            return None, None
+
+        # Get all cached audio files
+        cached_files = list(cache_folder.glob('*.mp3'))
+
+        if not cached_files:
+            message_processor("Audio cache is empty", "warning", ntfy=True)
+            return None, None
+
+        # Find all files that meet duration requirement, then randomly select one
+        suitable_files = []
+
+        for cached_file in cached_files:
+            try:
+                with AudioFileClip(str(cached_file)) as audio_clip:
+                    duration_sec = audio_clip.duration
+
+                # Check if it meets minimum duration requirement
+                if min_duration_sec and duration_sec < min_duration_sec:
+                    continue  # Skip this file
+
+                # Add to suitable files list
+                suitable_files.append((cached_file, duration_sec))
+
+            except Exception as e:
+                message_processor(f"Error verifying cached audio {cached_file.name}: {e}", "error")
+                # Remove corrupted file
+                cached_file.unlink()
+                message_processor(f"Removed corrupted cached audio: {cached_file.name}", "info")
+                continue
+
+        if not suitable_files:
+            # No suitable file found
+            message_processor(
+                f"No cached audio file meets minimum duration ({min_duration_sec:.1f}s)",
+                "warning"
+            )
+            return None, None
+
+        # Randomly select from suitable files
+        selected_file, duration_sec = choice(suitable_files)
+        message_processor(
+            f"Randomly selected cached audio: {selected_file.name} ({duration_sec:.1f}s) "
+            f"from {len(suitable_files)} suitable files",
+            "info"
+        )
+        return str(selected_file), duration_sec * 1000  # Return duration in milliseconds
+
+    except Exception as e:
+        message_processor(f"Error retrieving cached audio: {e}", "error")
+        return None, None
+
+def get_cache_stats(cache_folder):
+    """
+    Get statistics about the audio cache.
+
+    Args:
+        cache_folder (str or Path): Path to the audio cache folder
+
+    Returns:
+        dict: Cache statistics (count, total_size_mb, oldest_date, newest_date)
+    """
+    try:
+        cache_folder = Path(cache_folder)
+
+        if not cache_folder.exists():
+            return {'count': 0, 'total_size_mb': 0, 'oldest_date': None, 'newest_date': None}
+
+        cached_files = list(cache_folder.glob('*.mp3'))
+
+        if not cached_files:
+            return {'count': 0, 'total_size_mb': 0, 'oldest_date': None, 'newest_date': None}
+
+        total_size = sum(f.stat().st_size for f in cached_files)
+        oldest = min(cached_files, key=lambda x: x.stat().st_mtime)
+        newest = max(cached_files, key=lambda x: x.stat().st_mtime)
+
+        return {
+            'count': len(cached_files),
+            'total_size_mb': total_size / (1024 * 1024),
+            'oldest_date': datetime.fromtimestamp(oldest.stat().st_mtime),
+            'newest_date': datetime.fromtimestamp(newest.stat().st_mtime)
+        }
+
+    except Exception as e:
+        message_processor(f"Error getting cache stats: {e}", "error")
+        return {'count': 0, 'total_size_mb': 0, 'oldest_date': None, 'newest_date': None}
+
+def check_socks_proxy(config):
+    """
+    Check SOCKS proxy connectivity and DNS resolution.
+
+    Args:
+        config (dict): Configuration containing proxy settings
+
+    Returns:
+        dict: Status information with keys:
+            - 'reachable': bool
+            - 'method': str (hostname, ip, or none)
+            - 'error': str (if not reachable)
+    """
+    import socket
+
+    if not config or 'proxies' not in config:
+        return {'reachable': True, 'method': 'none', 'error': None}
+
+    proxies = config['proxies']
+    socks5_hostname = proxies.get('socks5_hostname', '')
+    socks5 = proxies.get('socks5', '')
+
+    # Try socks5_hostname first
+    if socks5_hostname:
+        proxy_str = socks5_hostname
+        try:
+            # Parse hostname:port
+            if ':' in proxy_str:
+                host, port = proxy_str.rsplit(':', 1)
+                port = int(port)
+            else:
+                host = proxy_str
+                port = 1080  # Default SOCKS port
+
+            # Try to resolve hostname
+            try:
+                ip = socket.gethostbyname(host)
+                message_processor(f"SOCKS proxy hostname resolved: {host} -> {ip}", "info")
+
+                # Try to connect to the proxy
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.connect((host, port))
+                sock.close()
+                message_processor(f"SOCKS proxy reachable at {host}:{port}", "info")
+                return {'reachable': True, 'method': 'hostname', 'error': None}
+            except socket.gaierror as e:
+                error_msg = f"SOCKS proxy hostname DNS resolution failed: {host} - {e}"
+                message_processor(error_msg, "error", ntfy=True)
+                return {'reachable': False, 'method': 'hostname', 'error': str(e)}
+            except (socket.timeout, ConnectionRefusedError, OSError) as e:
+                error_msg = f"SOCKS proxy not responding at {host}:{port} - {e}"
+                message_processor(error_msg, "error", ntfy=True)
+                return {'reachable': False, 'method': 'hostname', 'error': str(e)}
+        except Exception as e:
+            error_msg = f"Error checking SOCKS proxy (hostname): {e}"
+            message_processor(error_msg, "error")
+            return {'reachable': False, 'method': 'hostname', 'error': str(e)}
+
+    # Try socks5 (IP) if hostname not available
+    if socks5:
+        proxy_str = socks5
+        try:
+            if ':' in proxy_str:
+                host, port = proxy_str.rsplit(':', 1)
+                port = int(port)
+            else:
+                host = proxy_str
+                port = 1080
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            sock.connect((host, port))
+            sock.close()
+            message_processor(f"SOCKS proxy reachable at {host}:{port}", "info")
+            return {'reachable': True, 'method': 'ip', 'error': None}
+        except (socket.timeout, ConnectionRefusedError, OSError) as e:
+            error_msg = f"SOCKS proxy not responding at {host}:{port} - {e}"
+            message_processor(error_msg, "error", ntfy=True)
+            return {'reachable': False, 'method': 'ip', 'error': str(e)}
+        except Exception as e:
+            error_msg = f"Error checking SOCKS proxy (IP): {e}"
+            message_processor(error_msg, "error")
+            return {'reachable': False, 'method': 'ip', 'error': str(e)}
+
+    return {'reachable': True, 'method': 'none', 'error': None}
+
+def check_pixabay_status(session):
+    """
+    Check if Pixabay is accessible and not blocking us.
+
+    Args:
+        session: requests.Session or cloudscraper session
+
+    Returns:
+        dict: Status information with keys:
+            - 'accessible': bool
+            - 'status_code': int
+            - 'blocked_by_cloudflare': bool
+            - 'error': str (if not accessible)
+    """
+    test_url = "https://pixabay.com/"
+
+    try:
+        response = session.get(test_url, timeout=10)
+        status_code = response.status_code
+
+        # Check for Cloudflare block
+        is_cloudflare = False
+        if status_code == 403 or status_code == 503:
+            response_text = response.text.lower()
+            if 'cloudflare' in response_text or 'cf-ray' in response_text:
+                is_cloudflare = True
+                error_msg = f"Pixabay blocked by Cloudflare (Status: {status_code})"
+                message_processor(error_msg, "error", ntfy=True)
+                return {
+                    'accessible': False,
+                    'status_code': status_code,
+                    'blocked_by_cloudflare': True,
+                    'error': 'Cloudflare protection active'
+                }
+
+        if status_code == 200:
+            message_processor(f"Pixabay accessible (Status: {status_code})", "info")
+            return {
+                'accessible': True,
+                'status_code': status_code,
+                'blocked_by_cloudflare': False,
+                'error': None
+            }
+        else:
+            error_msg = f"⚠️ Pixabay returned status code: {status_code}"
+            message_processor(error_msg, "warning")
+            return {
+                'accessible': False,
+                'status_code': status_code,
+                'blocked_by_cloudflare': is_cloudflare,
+                'error': f'HTTP {status_code}'
+            }
+
+    except requests.exceptions.Timeout:
+        error_msg = "⏱️ Pixabay connection timeout"
+        message_processor(error_msg, "error", ntfy=True)
+        return {
+            'accessible': False,
+            'status_code': None,
+            'blocked_by_cloudflare': False,
+            'error': 'Connection timeout'
+        }
+    except requests.exceptions.ConnectionError as e:
+        error_msg = f"🔌 Pixabay connection error: {e}"
+        message_processor(error_msg, "error", ntfy=True)
+        return {
+            'accessible': False,
+            'status_code': None,
+            'blocked_by_cloudflare': False,
+            'error': f'Connection error: {e}'
+        }
+    except Exception as e:
+        error_msg = f"❌ Error checking Pixabay: {e}"
+        message_processor(error_msg, "error")
+        return {
+            'accessible': False,
+            'status_code': None,
+            'blocked_by_cloudflare': False,
+            'error': str(e)
+        }
 
 def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None):
     """
@@ -1075,57 +1425,359 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
 
 def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> list:
     """
-    Downloads multiple songs, ensuring their total duration covers the video duration.
+    Downloads multiple songs with fallback to cached audio, ensuring their total duration covers the video duration.
+
+    Enhanced with:
+    - Pre-flight checks for SOCKS proxy and Pixabay connectivity
+    - Automatic caching of successfully downloaded songs
+    - Fallback to cached audio if Pixabay fails
+    - Better error reporting with emojis
 
     Args:
         video_duration (int): Required total audio duration in milliseconds.
         AUDIO_FOLDER (str or Path): Directory to save the downloaded audio files.
         debug (bool): If True, save HTML/JSON responses for debugging.
+        config (dict): Configuration dictionary containing proxy, cache, and music settings.
 
     Returns:
         list: List of tuples, each containing the path to a downloaded audio file and its duration in seconds.
-              Returns None if unsuccessful in downloading sufficient audio.
+              Returns None if unsuccessful in downloading sufficient audio and cache is empty.
     """
+    from .timelapse_config import AUDIO_CACHE_FOLDER, AUDIO_CACHE_MAX_FILES
+
     songs = []
     total_duration = 0  # total duration in seconds
     attempts = 0
     max_attempts = 10
-    
-    message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video", print_me=False)
+    pixabay_success = False
 
+    # Get cache settings from config
+    cache_folder = config.get('files_and_folders', {}).get('AUDIO_CACHE_FOLDER', AUDIO_CACHE_FOLDER) if config else AUDIO_CACHE_FOLDER
+    max_cache_files = config.get('music', {}).get('cache_max_files', AUDIO_CACHE_MAX_FILES) if config else AUDIO_CACHE_MAX_FILES
+
+    message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video")
+
+    # Display cache stats
+    cache_stats = get_cache_stats(cache_folder)
+    if cache_stats['count'] > 0:
+        message_processor(
+            f"Audio cache: {cache_stats['count']} files ({cache_stats['total_size_mb']:.1f}MB)",
+            "info"
+        )
+
+    # Pre-flight check: SOCKS proxy (if configured)
+    if config and 'proxies' in config:
+        socks_status = check_socks_proxy(config)
+        if not socks_status['reachable']:
+            message_processor(
+                f"SOCKS proxy check failed - will attempt Pixabay anyway",
+                "warning"
+            )
+
+    # Try downloading from Pixabay
     while total_duration < video_duration / 1000 and attempts < max_attempts:
         song_path, song_duration_ms = single_song_download(AUDIO_FOLDER, debug=debug, config=config)
         if song_path and song_duration_ms:
             song_duration_sec = song_duration_ms / 1000
             songs.append((song_path, song_duration_sec))
             total_duration += song_duration_sec
+            pixabay_success = True
+
+            # Add successful download to cache
+            try:
+                add_to_audio_cache(song_path, cache_folder, max_cache_files)
+            except Exception as e:
+                message_processor(f"Failed to cache audio: {e}", "warning")
         else:
-            message_processor(f"Failed to download a valid song on attempt {attempts + 1}", "warning")
-        
+            message_processor(f"Failed to download song on attempt {attempts + 1}/{max_attempts}", "warning")
+
         attempts += 1
 
-    if total_duration < video_duration / 1000:
-        message_processor(f"Failed to download sufficient audio length. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s")
-        return None
-    
-    message_processor(f"Successfully downloaded {len(songs)} songs, total duration: {total_duration:.2f}s")
+    # Check if we got enough audio from Pixabay
+    if total_duration >= video_duration / 1000:
+        message_processor(f"Successfully downloaded {len(songs)} songs from Pixabay, total: {total_duration:.2f}s", "info")
+        return songs
+
+    # Pixabay failed - try cached audio as fallback
+    if not pixabay_success or total_duration < video_duration / 1000:
+        message_processor(
+            f"Pixabay download failed. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s",
+            "warning",
+            ntfy=True
+        )
+        message_processor("Attempting to use cached audio as fallback...", "info")
+
+        # Try to get cached audio
+        cached_audio_path, cached_duration_ms = get_cached_audio(
+            cache_folder,
+            min_duration_sec=video_duration / 1000
+        )
+
+        if cached_audio_path and cached_duration_ms:
+            cached_duration_sec = cached_duration_ms / 1000
+            message_processor(
+                f"Using cached audio ({cached_duration_sec:.1f}s)",
+                "info",
+                ntfy=True
+            )
+            return [(cached_audio_path, cached_duration_sec)]
+        else:
+            message_processor(
+                f"No suitable cached audio found. Cache has {cache_stats['count']} files",
+                "error",
+                ntfy=True
+            )
+            return None
+
+    message_processor(f"Downloaded {len(songs)} songs, total duration: {total_duration:.2f}s")
     return songs
+
+def create_tts_intro(
+    text: str,
+    output_path: str | Path,
+    voice_gender: str = 'female',
+    rate: int = 150,
+    volume: float = 0.9
+) -> tuple[str | None, float | None]:
+    """
+    Creates a TTS (Text-to-Speech) audio file using Google Cloud TTS.
+
+    Args:
+        text (str): The text to convert to speech. Can include {date} placeholder.
+        output_path (str or Path): Path where the TTS audio file will be saved.
+        voice_gender (str): 'female' or 'male' voice preference.
+        rate (int): Speech rate (words per minute). Default 150.
+        volume (float): Volume level (0.0 to 1.0). Default 0.9.
+
+    Returns:
+        tuple: (audio_path, duration_ms) or (None, None) if failed
+    """
+    try:
+        import os
+
+        # Check for tts.json credentials file in project root
+        script_dir = Path(__file__).parent.parent  # Go up from lib to project root
+        credentials_path = script_dir / 'tts.json'
+
+        if not credentials_path.exists():
+            message_processor("TTS skipped: tts.json credentials file not found. See GOOGLE_TTS_SETUP.md", "info")
+            return None, None
+
+        # Set credentials environment variable
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(credentials_path)
+
+        from google.cloud import texttospeech
+
+        # Replace placeholders in text
+        today = datetime.now().strftime("%B %d, %Y")  # e.g., "November 19, 2025"
+        narration_text = text.replace('{date}', today)
+
+        message_processor(f"Generating TTS intro: \"{narration_text}\"", "info")
+
+        # Save to file
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Initialize the client
+        client = texttospeech.TextToSpeechClient()
+
+        # Set the text input
+        synthesis_input = texttospeech.SynthesisInput(text=narration_text)
+
+        # Select voice - using Neural2 voices for best quality
+        if voice_gender.lower() == 'female':
+            voice_name = 'en-US-Neural2-F'
+            ssml_gender = texttospeech.SsmlVoiceGender.FEMALE
+        else:
+            voice_name = 'en-US-Neural2-D'
+            ssml_gender = texttospeech.SsmlVoiceGender.MALE
+
+        voice = texttospeech.VoiceSelectionParams(
+            language_code='en-US',
+            name=voice_name,
+            ssml_gender=ssml_gender
+        )
+
+        # Configure audio output
+        # Speaking rate: 0.25 to 4.0, 1.0 is normal
+        # Convert WPM to Google's scale (150 WPM = 1.0)
+        speaking_rate = rate / 150.0
+
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=speaking_rate,
+            volume_gain_db=0.0  # Can adjust if needed
+        )
+
+        # Perform the text-to-speech request
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+
+        # Write the audio content to file
+        with open(output_path, 'wb') as out:
+            out.write(response.audio_content)
+
+        # Verify the file was created and get duration
+        if output_path.exists():
+            try:
+                with AudioFileClip(str(output_path)) as audio_clip:
+                    duration_sec = audio_clip.duration
+                message_processor(f"TTS intro created: {duration_sec:.1f}s", "info")
+                return str(output_path), duration_sec * 1000  # Return duration in milliseconds
+            except Exception as e:
+                message_processor(f"Error verifying TTS file: {e}", "error")
+                return None, None
+        else:
+            message_processor("TTS file was not created", "error")
+            return None, None
+
+    except ImportError:
+        message_processor("google-cloud-texttospeech not installed. Run: pip install google-cloud-texttospeech", "error")
+        return None, None
+    except Exception as e:
+        message_processor(f"Error creating TTS intro: {e}", "error")
+        return None, None
+
+def combine_tts_with_music(
+    tts_audio_path: str,
+    music_audio: str | AudioFileClip,
+    start_delay: float = 3,
+    duck_volume: float = 0.3,
+    fade_duration: float = 1.5
+) -> AudioFileClip:
+    """
+    Combines TTS with background music, playing TTS over ducked music with smooth fades.
+
+    Args:
+        tts_audio_path (str): Path to the TTS audio file
+        music_audio: AudioFileClip or str path to music file
+        start_delay (float): Seconds to wait before TTS starts (default 3)
+        duck_volume (float): Volume level for music during TTS (0.0 to 1.0, default 0.3)
+        fade_duration (float): Duration of fade down/up transitions in seconds (default 1.5)
+
+    Returns:
+        AudioFileClip: Combined audio with TTS overlaid on music
+    """
+    try:
+        # Load TTS audio
+        tts_clip = AudioFileClip(tts_audio_path)
+        tts_duration = tts_clip.duration
+
+        # Load music audio
+        if isinstance(music_audio, str):
+            music_clip = AudioFileClip(music_audio)
+        else:
+            music_clip = music_audio
+
+        music_duration = music_clip.duration
+
+        # Set TTS to start after delay
+        tts_clip = tts_clip.set_start(start_delay)
+
+        # Calculate fade timing
+        # Fade down starts before TTS, fade up starts after TTS ends
+        fade_down_start = start_delay - fade_duration  # Start fading down before TTS
+        fade_down_end = start_delay  # Fully ducked when TTS starts
+        fade_up_start = start_delay + tts_duration  # Start fading up when TTS ends
+        fade_up_end = fade_up_start + fade_duration  # Fully restored after fade
+
+        # Create volume envelope for music ducking with smooth fades
+        def volume_envelope(get_frame, t):
+            import numpy as np
+
+            frame = get_frame(t)
+
+            if isinstance(t, (int, float)):
+                # Single time value
+                if t < fade_down_start:
+                    # Before fade - full volume
+                    return frame
+                elif t < fade_down_end:
+                    # During fade down - interpolate from 1.0 to duck_volume
+                    progress = (t - fade_down_start) / fade_duration
+                    volume = 1.0 - (progress * (1.0 - duck_volume))
+                    return frame * volume
+                elif t < fade_up_start:
+                    # During TTS - ducked volume
+                    return frame * duck_volume
+                elif t < fade_up_end:
+                    # During fade up - interpolate from duck_volume to 1.0
+                    progress = (t - fade_up_start) / fade_duration
+                    volume = duck_volume + (progress * (1.0 - duck_volume))
+                    return frame * volume
+                else:
+                    # After fade up - full volume
+                    return frame
+            else:
+                # Array of time values - vectorized processing
+                result = frame.copy()
+
+                # Create volume multiplier array
+                volume = np.ones_like(t, dtype=float)
+
+                # Fade down region
+                fade_down_mask = (t >= fade_down_start) & (t < fade_down_end)
+                if np.any(fade_down_mask):
+                    progress = (t[fade_down_mask] - fade_down_start) / fade_duration
+                    volume[fade_down_mask] = 1.0 - (progress * (1.0 - duck_volume))
+
+                # Ducked region (during TTS)
+                ducked_mask = (t >= fade_down_end) & (t < fade_up_start)
+                volume[ducked_mask] = duck_volume
+
+                # Fade up region
+                fade_up_mask = (t >= fade_up_start) & (t < fade_up_end)
+                if np.any(fade_up_mask):
+                    progress = (t[fade_up_mask] - fade_up_start) / fade_duration
+                    volume[fade_up_mask] = duck_volume + (progress * (1.0 - duck_volume))
+
+                # Apply volume to all channels
+                if len(result.shape) == 1:
+                    result = result * volume
+                else:
+                    result = result * volume[:, np.newaxis]
+
+                return result
+
+        # Apply ducking with fades to music
+        music_clip = music_clip.fl(volume_envelope, apply_to=['audio'])
+
+        # Composite the audio
+        from moviepy.audio.AudioClip import CompositeAudioClip
+        combined = CompositeAudioClip([music_clip, tts_clip])
+
+        message_processor(
+            f"Combined TTS ({tts_duration:.1f}s) with music "
+            f"(smooth {fade_duration}s fades, ducked to {int(duck_volume*100)}%)",
+            "info"
+        )
+        return combined
+
+    except Exception as e:
+        message_processor(f"Error combining TTS with music: {e}", "error")
+        # Return just the music if combining fails
+        if isinstance(music_audio, str):
+            return AudioFileClip(music_audio)
+        return music_audio
 
 def concatenate_songs(songs, crossfade_seconds=3):
     """
     Concatenates multiple AudioFileClip objects with manual crossfade.
-    
+
     Args:
         songs (list of tuples): List of tuples, each containing the path to an audio file and its duration.
         crossfade_seconds (int): Duration of crossfade between clips.
-    
+
     Returns:
         AudioFileClip or None: The concatenated audio clip.
     """
     if not songs:
         message_processor("No songs provided for concatenation.", log_level="error")
         return None
-    
+
     clips = []
     for song in songs:
         if isinstance(song, tuple) and len(song) > 0:

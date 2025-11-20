@@ -12,6 +12,7 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 - **Duplicate Avoidance:** Uses SHA-256 hashing to prevent saving duplicate images
 - **Time-Lapse Video Creation:** Generates high-quality time-lapse videos from collected images
 - **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos using Pixabay
+- **TTS Intro:** Optional text-to-speech intro using Google Cloud TTS
 
 ### Enhanced Capabilities
 - **Robust Error Handling:** Exponential backoff and automatic session recovery
@@ -33,7 +34,11 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 ## Requirements
 - Python 3.12 (specifically - newer versions may have compatibility issues with dependencies)
 - tmux (for background operation)
+- ffmpeg (for video/audio processing)
 - Additional system monitoring capabilities (automatically installed)
+
+## Optional Setup
+- **Google Cloud TTS:** For high-quality text-to-speech intros. See [GOOGLE_TTS_SETUP.md](GOOGLE_TTS_SETUP.md) for setup instructions.
 
 ## Quick Start
 
@@ -43,7 +48,9 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 bash setup.sh
 
 # Configure your first project
-python timelapse_setup.py
+python main.py
+# Or directly with project name:
+python main.py <project_name>
 ```
 
 ### 2. Running a Project
@@ -66,17 +73,28 @@ python main.py <project_name> --movie
 
 ## Project Structure
 
-Projects are stored in the `configs/` directory:
 ```
 HourGlass/
-├── configs/
+├── main.py                 # Main entry point
+├── lib/                    # Library modules
+│   ├── timelapse_core.py   # Core functionality
+│   ├── timelapse_config.py # Configuration management
+│   ├── timelapse_setup.py  # Project setup wizard
+│   ├── timelapse_loop.py   # Main capture loop
+│   ├── timelapse_validator.py # Image validation
+│   ├── timelapse_upload.py # YouTube upload
+│   ├── config_validator.py # Config validation
+│   ├── health_monitor.py   # System health monitoring
+│   ├── memory_optimizer.py # Memory management
+│   └── ...
+├── configs/                # Project configurations
 │   ├── project1.json
 │   ├── project2.json
 │   └── ...
-├── instructions/
+├── instructions/           # Generated setup instructions
 │   ├── project1_instructions.txt
 │   └── ...
-└── <project_base>/
+└── ~/HourGlass/<project>/  # Project data (configurable)
     ├── images/
     ├── video/
     ├── audio/

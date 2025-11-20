@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List
 from datetime import datetime
 from threading import Thread, Event
-from timelapse_core import message_processor
+from .timelapse_core import message_processor
 from dataclasses import dataclass, asdict
 
 

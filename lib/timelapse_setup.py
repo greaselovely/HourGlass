@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # timelapse_setup.py - Configuration wizard for HourGlass projects
 
 import os
@@ -90,9 +89,17 @@ def create_initial_config(existing_config=None, project_name=None):
         config["project"]["name"] = project_name
     
     current_desc = config.get("project", {}).get("description", "")
-    desc_prompt = f"Project description (current: {current_desc}): " if current_desc else "Project description (optional): "
-    new_desc = input(desc_prompt).strip()
-    config["project"]["description"] = new_desc if new_desc else current_desc
+    if current_desc:
+        desc_prompt = f"Project description (current: {current_desc}): "
+        new_desc = input(desc_prompt).strip()
+        config["project"]["description"] = new_desc if new_desc else current_desc
+    else:
+        desc_prompt = "Project description (required, used for TTS intro): "
+        new_desc = input(desc_prompt).strip()
+        while not new_desc:
+            print("Project description is required for TTS intro!")
+            new_desc = input("Enter project description: ").strip()
+        config["project"]["description"] = new_desc
     
     # File and folder settings
     print("\n[2/8] Storage Configuration")

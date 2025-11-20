@@ -6,8 +6,8 @@ import logging
 from time import sleep
 from random import choice
 from datetime import datetime, timedelta
-from timelapse_core import message_processor, activity, clear, create_session, log_jamming
-from timelapse_config import RED_CIRCLE
+from .timelapse_core import message_processor, activity, clear, create_session, log_jamming
+from .timelapse_config import RED_CIRCLE
 
 
 class TimelapseMainLoop:

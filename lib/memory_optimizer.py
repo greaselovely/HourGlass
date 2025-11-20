@@ -5,7 +5,7 @@ import os
 import psutil
 import numpy as np
 from contextlib import contextmanager
-from timelapse_core import message_processor
+from .timelapse_core import message_processor
 
 class MemoryOptimizer:
     """

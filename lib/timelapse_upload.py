@@ -3,20 +3,23 @@
 import os
 import json
 import logging
+from typing import Any
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
-from timelapse_config import config
 
-def get_youtube_credentials():
+def get_youtube_credentials(config: dict) -> Credentials:
     """
     Retrieve YouTube API credentials from the config.
 
     This function reads the YouTube API credentials from the config file,
     creates a Credentials object, and refreshes the token to ensure it's valid.
+
+    Args:
+        config (dict): The loaded configuration dictionary.
 
     Returns:
         google.oauth2.credentials.Credentials: A valid Credentials object for YouTube API.
@@ -52,7 +55,14 @@ def get_youtube_credentials():
         logging.error(f"Error refreshing credentials: {str(e)}")
         raise
 
-def upload_to_youtube(video_path, title, description, category_id="28", privacy_status="public"):
+def upload_to_youtube(
+    video_path: str,
+    title: str,
+    description: str,
+    config: dict,
+    category_id: str = "28",
+    privacy_status: str = "public"
+) -> tuple[str | None, Any | None]:
     """
     Upload a video to YouTube.
 
@@ -63,6 +73,7 @@ def upload_to_youtube(video_path, title, description, category_id="28", privacy_
         video_path (str): The file path of the video to upload.
         title (str): The title of the video.
         description (str): The description of the video.
+        config (dict): The loaded configuration dictionary.
         category_id (str, optional): The category ID for the video. Defaults to "28" (Science & Technology).
         privacy_status (str, optional): The privacy status of the video. Defaults to "public".
 
@@ -74,7 +85,7 @@ def upload_to_youtube(video_path, title, description, category_id="28", privacy_
         Exception: If an error occurs during the upload process.
     """
     try:
-        credentials = get_youtube_credentials()
+        credentials = get_youtube_credentials(config)
         youtube = build("youtube", "v3", credentials=credentials)
 
         body = {
@@ -105,7 +116,7 @@ def upload_to_youtube(video_path, title, description, category_id="28", privacy_
         logging.error(f"An error occurred during upload: {str(e)}")
         return None, None
 
-def add_video_to_playlist(youtube, video_id, playlist_name=None):
+def add_video_to_playlist(youtube: Any, video_id: str, playlist_name: str | None = None) -> tuple[bool, str]:
     """
     Add a video to a specified YouTube playlist.
 
@@ -128,7 +139,7 @@ def add_video_to_playlist(youtube, video_id, playlist_name=None):
     try:
         # Use project name from config if not specified
         if playlist_name is None:
-            from timelapse_config import YOUTUBE_PLAYLIST_NAME
+            from .timelapse_config import YOUTUBE_PLAYLIST_NAME
             playlist_name = YOUTUBE_PLAYLIST_NAME
         
         # First, we need to find the playlist ID

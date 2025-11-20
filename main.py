@@ -45,9 +45,9 @@ def import_dependencies(config_path=None):
     global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
     global setup_logging
     
-    from timelapse_core import message_processor, CustomLogger, ImageDownloader
-    from timelapse_config import load_config, setup_logging
-    from timelapse_loop import create_timelapse_main_loop
+    from lib.timelapse_core import message_processor, CustomLogger, ImageDownloader
+    from lib.timelapse_config import load_config, setup_logging
+    from lib.timelapse_loop import create_timelapse_main_loop
     
     # Load the specific config
     loaded_config = load_config(config_path)
@@ -92,16 +92,16 @@ def import_dependencies(config_path=None):
         NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
         ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
     
-    from config_validator import ConfigValidator, validate_config_quick
-    from health_monitor import create_health_monitor
+    from lib.config_validator import ConfigValidator, validate_config_quick
+    from lib.health_monitor import create_health_monitor
     from moviepy.editor import ImageSequenceClip, AudioFileClip
-    from timelapse_validator import validate_images as validate_images_fast
-    from memory_optimizer import memory_managed_operation, monitor_resource_usage
-    
+    from lib.timelapse_validator import validate_images as validate_images_fast
+    from lib.memory_optimizer import memory_managed_operation, monitor_resource_usage
+
     # Import everything else from timelapse_core and timelapse_config
     # BUT don't overwrite the variables we just set from the loaded config
-    import timelapse_core
-    import timelapse_config
+    from lib import timelapse_core
+    from lib import timelapse_config
     
     # Variables to preserve (that we just set from the loaded config)
     preserve_vars = {
@@ -254,7 +254,7 @@ def test_audio_download(config, duration_seconds=60, debug=False, test_network=F
         user_agent_override: Override the user agent for testing
     """
     from datetime import datetime
-    from timelapse_core import audio_download, concatenate_songs, message_processor
+    from lib.timelapse_core import audio_download, concatenate_songs, message_processor, create_tts_intro, combine_tts_with_music
     from moviepy.editor import AudioFileClip
     import os
     
@@ -476,7 +476,7 @@ def prompt_user_for_run_folder_selection(folders):
         except ValueError:
             print("Please enter a valid number or press Enter for default")
 
-def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset=0, debug=False):
+def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset=0, debug=False, use_cache=False):
     """
     Execute the main sequence of operations for creating a time-lapse video.
     Enhanced with memory management and performance monitoring.
@@ -525,44 +525,105 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         
         # Audio download with monitoring (optional) - now using Pixabay
         final_song = None
+        tts_intro_path = None
+        audio_source = "NONE"  # Track audio source: PIXABAY, CACHED, TTS, or NONE
+
         try:
-            message_processor("Attempting to download audio from Pixabay...", "info")
-            audio_result, audio_metrics = monitor_resource_usage(
-                audio_download, 
-                duration_threshold, 
-                run_audio_folder,
-                debug,
-                config
-            )
-            
+            # If --cache flag is set, try cached audio first
+            if use_cache:
+                message_processor("Using cached audio (--cache flag set)...", "info")
+                from lib.timelapse_core import get_cached_audio
+                from lib.timelapse_config import AUDIO_CACHE_FOLDER
+                cache_folder = config.get('files_and_folders', {}).get('AUDIO_CACHE_FOLDER', AUDIO_CACHE_FOLDER)
+                cached_audio_path, cached_duration_ms = get_cached_audio(
+                    cache_folder,
+                    min_duration_sec=duration_threshold / 1000
+                )
+                if cached_audio_path and cached_duration_ms:
+                    cached_duration_sec = cached_duration_ms / 1000
+                    audio_result = [(cached_audio_path, cached_duration_sec)]
+                    audio_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
+                    message_processor(f"Using cached audio ({cached_duration_sec:.1f}s)", "info")
+                else:
+                    message_processor("No suitable cached audio found, falling back to download...", "warning")
+                    audio_result, audio_metrics = monitor_resource_usage(
+                        audio_download,
+                        duration_threshold,
+                        run_audio_folder,
+                        debug,
+                        config
+                    )
+            else:
+                message_processor("Attempting to download audio from Pixabay...", "info")
+                audio_result, audio_metrics = monitor_resource_usage(
+                    audio_download,
+                    duration_threshold,
+                    run_audio_folder,
+                    debug,
+                    config
+                )
+
             if audio_result:
                 # Prepare final audio
                 if len(audio_result) >= 2:
                     message_processor("Concatenating multiple audio tracks")
                     final_song = concatenate_songs(audio_result)
+                    audio_source = "PIXABAY"
                 else:
                     # Handle single audio file - check if it's a tuple or just a path
                     if isinstance(audio_result[0], tuple) and len(audio_result[0]) > 0:
-                        final_song = audio_result[0][0]  # Extract path from tuple
+                        song_path = audio_result[0][0]  # Extract path from tuple
+                        # Check if this is from cache (cached files have 'cached_' prefix)
+                        if 'cached_' in os.path.basename(song_path):
+                            audio_source = "CACHED"
+                        else:
+                            audio_source = "PIXABAY"
+                        final_song = song_path
                     else:
                         final_song = audio_result[0]  # Use the result directly
+                        audio_source = "PIXABAY"
                     message_processor("Using single audio track")
+
+                # Add TTS intro if enabled
+                from lib.timelapse_config import TTS_INTRO_ENABLED, TTS_INTRO_VOICE_GENDER, TTS_INTRO_RATE, TTS_INTRO_VOLUME
+                if TTS_INTRO_ENABLED:
+                    # Get TTS text from project description
+                    project_description = config.get('project', {}).get('description', '')
+                    if project_description:
+                        tts_text = f"{project_description} for {{date}}"
+                    else:
+                        message_processor("Project description is empty - skipping TTS intro", "warning")
+                        tts_text = None
+
+                    if tts_text:
+                        tts_output = os.path.join(run_audio_folder, "tts_intro.mp3")
+                        tts_result, tts_duration = create_tts_intro(
+                            tts_text,
+                            tts_output,
+                            voice_gender=TTS_INTRO_VOICE_GENDER,
+                            rate=TTS_INTRO_RATE,
+                            volume=TTS_INTRO_VOLUME
+                        )
+                        if tts_result:
+                            tts_intro_path = tts_result
+                            message_processor("TTS intro will be added to video", "info")
             else:
                 message_processor("Audio download failed. Proceeding without audio.", "warning", ntfy=True)
+                audio_source = "NONE"
         except Exception as e:
             message_processor(f"Audio download error: {e}. Proceeding without audio.", "warning", ntfy=True)
             final_song = None
+            audio_source = "NONE"
         
-        # Create time-lapse video (simplified without black frame for now)
+        # Create time-lapse video
         message_processor("Creating Time-Lapse Video")
-        
-        # Temporary simple version without black frame
+
         try:
             logger = CustomLogger()
-            
+
             message_processor("Creating video clip from images")
             video_clip = ImageSequenceClip(valid_files, fps=fps)
-            
+
             # Handle audio if available
             audio_clip = None
             if final_song:
@@ -571,37 +632,55 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                     audio_clip = AudioFileClip(final_song)
                 else:
                     audio_clip = final_song
-                
+
+                # Add TTS intro if we have one
+                if tts_intro_path:
+                    message_processor("Combining TTS intro with music")
+                    audio_clip = combine_tts_with_music(tts_intro_path, audio_clip)
+
                 # Sync audio and video
                 if audio_clip.duration < video_clip.duration:
                     message_processor("Looping audio to match video length")
                     audio_clip = audio_clip.loop(duration=video_clip.duration)
                 else:
                     audio_clip = audio_clip.subclip(0, video_clip.duration)
-                
+
                 # Apply audio effects
                 audio_clip = audio_clip.audio_fadein(3).audio_fadeout(3)
                 video_clip = video_clip.set_audio(audio_clip)
             else:
-                message_processor("Creating video without audio")
-            
+                message_processor("Creating video without audio", "warning")
+
             # Apply video effects
             video_clip = video_clip.fadein(3).fadeout(3)
-            
+
             # Write video
             message_processor("Writing video file")
             if audio_clip:
                 video_clip.write_videofile(video_path, codec="libx264", audio_codec="aac", logger=logger)
             else:
                 video_clip.write_videofile(video_path, codec="libx264", logger=logger)
-            
+
             # Cleanup
             video_clip.close()
             if audio_clip:
                 audio_clip.close()
-            
+
             video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
-            
+
+            # Rename file if no audio was added
+            if audio_source == "NONE" and os.path.exists(video_path):
+                # Insert .NO_AUDIO before the extension
+                base_name = os.path.basename(video_path)
+                name_without_ext = os.path.splitext(base_name)[0]
+                ext = os.path.splitext(base_name)[1]
+                new_name = f"{name_without_ext}.NO_AUDIO{ext}"
+                new_path = os.path.join(os.path.dirname(video_path), new_name)
+
+                os.rename(video_path, new_path)
+                video_path = new_path  # Update video_path for subsequent logging
+                message_processor(f"Video renamed to indicate NO AUDIO: {new_name}", "warning", ntfy=True)
+
         except Exception as e:
             message_processor(f"Error in video creation: {e}", "error", ntfy=True)
             video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
@@ -691,6 +770,8 @@ def main():
                        help="Include network connectivity tests in audio test mode")
     parser.add_argument("--user-agent", type=str, default=None,
                        help="Override user agent for testing (use 'curl' for curl UA, 'chrome' for Chrome, etc.)")
+    parser.add_argument("--cache", action="store_true",
+                       help="Use cached audio instead of downloading (for testing)")
     args = parser.parse_args()
     
     # ===== AUTO-SETUP WHEN NO PROJECT OR CONFIG MISSING =====
@@ -706,7 +787,7 @@ def main():
             
             # Import and run setup
             try:
-                from timelapse_setup import main as setup_main
+                from lib.timelapse_setup import main as setup_main
                 setup_main()
                 print("\nSetup complete. Please run HourGlass again with your project name.")
                 sys.exit(0)
@@ -749,7 +830,7 @@ def main():
             
             # Import and run setup for this specific project
             try:
-                from timelapse_setup import create_initial_config, save_config, create_instructions_file
+                from lib.timelapse_setup import create_initial_config, save_config, create_instructions_file
                 
                 # Create new config for this project
                 config = create_initial_config(project_name=args.project)
@@ -916,7 +997,7 @@ def main():
         video_filename = f"{PROJECT_NAME}.{folder_date}.mp4"
         video_path = os.path.join(VIDEO_FOLDER, video_filename)
         
-        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
+        main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
         if health_monitor:
             health_monitor.stop_monitoring()
         return
@@ -1021,7 +1102,7 @@ def main():
         def enhanced_main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file):
             """Wrapper for main_sequence with health monitoring updates."""
             try:
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
                 if health_monitor:
                     health_monitor.update_performance_stats('video_created')
             except Exception as e:
@@ -1046,12 +1127,12 @@ def main():
         message_processor("Keyboard interrupt received", "warning", ntfy=True)
         try:
             message_processor("Processing existing images into video...")
-            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
+            main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
         except Exception as e:
             message_processor(f"Error processing images to video: {e}", "error")
             try:
                 # Fallback attempt
-                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug)
+                main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
             except Exception as fallback_error:
                 message_processor(f"Fallback video creation failed: {fallback_error}", "error", ntfy=True)
         finally:

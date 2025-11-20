@@ -1,7 +1,7 @@
 # youtube_refresh_token.py
 import json
 from google_auth_oauthlib.flow import InstalledAppFlow
-from timelapse_config import config
+from .timelapse_config import load_config
 
 """
 This module handles the OAuth 2.0 flow to obtain a new refresh token for the YouTube API.
@@ -9,10 +9,10 @@ It uses the client ID and secret from the configuration to authenticate and auth
 the application, then saves the new refresh token back to the configuration.
 """
 
-def get_new_refresh_token():
+def get_new_refresh_token(config_path: str | None = None) -> None:
     """
     Initiates the OAuth 2.0 flow to obtain a new refresh token for the YouTube API.
-    
+
     This function performs the following steps:
     1. Retrieves the client ID and secret from the configuration.
     2. Sets up an OAuth 2.0 flow with the YouTube upload scope.
@@ -20,13 +20,25 @@ def get_new_refresh_token():
     4. Opens a browser for the user to authorize the application.
     5. Obtains the new refresh token from the resulting credentials.
     6. Updates the configuration with the new refresh token.
-    
+
+    Args:
+        config_path (str, optional): Path to the configuration file. Required.
+
     The function will print error messages if the client ID or secret are missing,
     and will print the new refresh token and a confirmation message when successful.
-    
+
     Raises:
         Any exceptions raised during the OAuth flow or configuration update process.
     """
+    if not config_path:
+        print("Error: config_path is required")
+        return
+
+    config = load_config(config_path)
+    if not config:
+        print(f"Error: Failed to load config from {config_path}")
+        return
+
     youtube_config = config['auth']['youtube']
     client_id = youtube_config.get('client_id')
     client_secret = youtube_config.get('client_secret')
@@ -58,10 +70,15 @@ def get_new_refresh_token():
     youtube_config['refresh_token'] = new_refresh_token
     
     # Save the updated config back to file
-    with open('config.json', 'w') as file:
+    with open(config_path, 'w') as file:
         json.dump(config, file, indent=2)
-    
+
     print("Config updated with new refresh token.")
 
 if __name__ == "__main__":
-    get_new_refresh_token()
+    import sys
+    if len(sys.argv) > 1:
+        get_new_refresh_token(sys.argv[1])
+    else:
+        print("Usage: python youtube_refresh_token.py <config_path>")
+        print("Example: python youtube_refresh_token.py configs/VLA.json")

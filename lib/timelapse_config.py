@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.0  # HourGlass version with dynamic project configuration
+CURRENT_VERSION = 2.1  # HourGlass version with TTS intro support
 
 def setup_logging(config):
     """
@@ -129,8 +129,69 @@ def load_config(config_path=None):
     if not config_path:
         logging.error("No config path provided to load_config")
         return None
-    
+
     CONFIG_PATH = Path(config_path)
+
+    def normalize_paths(config):
+        """
+        Normalize paths in config to use ~ for home directory.
+        This makes configs portable across different systems and users.
+
+        - Detects hardcoded home paths like /home/user or /Users/user
+        - Replaces them with ~ in the stored config
+        - Expands ~ to current user's home when returning config
+        """
+        import re
+
+        current_home = str(Path.home())
+
+        # Pattern to match common home directory formats
+        # Matches /home/username, /Users/username, C:\Users\username
+        home_pattern = re.compile(r'^(/home/[^/]+|/Users/[^/]+|[A-Z]:\\Users\\[^\\]+)')
+
+        def replace_home_with_tilde(path_str):
+            """Replace any home directory path with ~"""
+            if not path_str or not isinstance(path_str, str):
+                return path_str
+
+            # Check if it starts with current home
+            if path_str.startswith(current_home):
+                return path_str.replace(current_home, '~', 1)
+
+            # Check for other home patterns (from different systems)
+            match = home_pattern.match(path_str)
+            if match:
+                return path_str.replace(match.group(1), '~', 1)
+
+            return path_str
+
+        def expand_tilde(path_str):
+            """Expand ~ to current user's home directory"""
+            if not path_str or not isinstance(path_str, str):
+                return path_str
+            return os.path.expanduser(path_str)
+
+        # Normalize paths in files_and_folders section
+        if 'files_and_folders' in config:
+            for key, value in config['files_and_folders'].items():
+                if isinstance(value, str) and ('/' in value or '\\' in value):
+                    # First normalize to use ~
+                    normalized = replace_home_with_tilde(value)
+                    config['files_and_folders'][key] = normalized
+
+        return config
+
+    def expand_config_paths(config):
+        """
+        Expand ~ to actual home directory for use in the application.
+        This is called after loading and normalizing, before returning config.
+        """
+        if 'files_and_folders' in config:
+            for key, value in config['files_and_folders'].items():
+                if isinstance(value, str):
+                    config['files_and_folders'][key] = os.path.expanduser(value)
+
+        return config
     
     def create_default_config():
         """
@@ -214,7 +275,8 @@ def load_config(config_path=None):
                 "VIDEO_FOLDER": os.path.join(project_base, "video"),
                 "IMAGES_FOLDER": os.path.join(project_base, "images"),
                 "LOGGING_FOLDER": os.path.join(project_base, "logging"),
-                "AUDIO_FOLDER": os.path.join(project_base, "audio")
+                "AUDIO_FOLDER": os.path.join(project_base, "audio"),
+                "AUDIO_CACHE_FOLDER": os.path.join(project_base, "audio_cache")
             },
             "urls": {
                 "IMAGE_URL": "",
@@ -223,9 +285,17 @@ def load_config(config_path=None):
             "music": {
                 "enabled": False,
                 "pixabay_api_key": "",
-                "search_terms": [],
+                "pixabay_base_url": "https://pixabay.com/music/search/",
+                "search_terms": ["background music"],
                 "min_duration": 60,
-                "preferred_genres": []
+                "preferred_genres": [],
+                "cache_max_files": 50,
+                "tts_intro": {
+                    "enabled": False,
+                    "voice_gender": "female",
+                    "rate": 150,
+                    "volume": 0.9
+                }
             },
             "tmux": {
                 "session_name": "hourglass-default",
@@ -296,21 +366,12 @@ def load_config(config_path=None):
                 elif existing[key] == "" or existing[key] is None:
                     logging.info(f"Updating empty value for key: {key}")
                     existing[key] = value
-                elif key == 'URL' and 'sun' in existing and 'sun' in default:
-                    logging.info(f"Forcing update of sun URL from {existing[key]} to {value}")
-                    existing[key] = value
             return existing
 
         if 'version' not in config or config['version'] < CURRENT_VERSION:
             logging.info(f"Updating config from version {config.get('version', 'unversioned')} to {CURRENT_VERSION}")
             default_config = create_default_config()
             updated_config = recursive_update(config, default_config)
-            
-            # Force update of sun URL
-            if 'sun' in updated_config and 'URL' in updated_config['sun']:
-                updated_config['sun']['URL'] = default_config['sun']['URL']
-                logging.info(f"Forced update of sun URL to {updated_config['sun']['URL']}")
-            
             updated_config['version'] = CURRENT_VERSION
             
             return updated_config
@@ -320,21 +381,27 @@ def load_config(config_path=None):
         logging.info(f"Attempting to load configuration from {CONFIG_PATH}")
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
+
+        # Normalize paths to use ~ (for portability)
+        config = normalize_paths(config)
         config = update_config(config)
 
-        # Write updated config back to file
+        # Write updated config back to file (with ~ paths for portability)
         with open(CONFIG_PATH, 'w') as file:
             json.dump(config, file, indent=2)
         logging.info("Updated configuration written to file")
 
+        # Expand ~ to actual home directory for use in the application
+        config = expand_config_paths(config)
+
     except FileNotFoundError:
         logging.warning(f"Configuration file not found at {CONFIG_PATH}")
         return None
-    
+
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON in '{CONFIG_PATH}': {e}")
         return None
-    
+
     # Update logging configuration if needed
     if config:
         if config['files_and_folders']['LOGGING_FOLDER'] != DEFAULT_CONFIG['files_and_folders']['LOGGING_FOLDER'] or \
@@ -382,6 +449,7 @@ IMAGES_FOLDER = os.path.join(PROJECT_BASE, 'images')
 VALID_IMAGES_FILE = 'valid_images.json'
 LOGGING_FOLDER = os.path.join(PROJECT_BASE, 'logging')
 AUDIO_FOLDER = os.path.join(PROJECT_BASE, 'audio')
+AUDIO_CACHE_FOLDER = os.path.join(PROJECT_BASE, 'audio_cache')
 LOG_FILE_NAME = 'timelapse.log'
 LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
 
@@ -404,9 +472,17 @@ NTFY_URL = 'http://ntfy.sh/'
 # Music settings
 MUSIC_ENABLED = False
 PIXABAY_API_KEY = ''
-MUSIC_SEARCH_TERMS = []
+PIXABAY_BASE_URL = 'https://pixabay.com/music/search/'
+MUSIC_SEARCH_TERMS = ['background music']
 MUSIC_MIN_DURATION = 60
 MUSIC_GENRES = []
+AUDIO_CACHE_MAX_FILES = 50
+
+# TTS Intro settings
+TTS_INTRO_ENABLED = True
+TTS_INTRO_VOICE_GENDER = 'female'
+TTS_INTRO_RATE = 150
+TTS_INTRO_VOLUME = 0.9
 
 # YouTube settings
 YOUTUBE_CLIENT_ID = ''
@@ -496,26 +572,34 @@ def reload_config():
         VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
         LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
         AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
+        AUDIO_CACHE_FOLDER = config['files_and_folders'].get('AUDIO_CACHE_FOLDER', os.path.join(PROJECT_BASE, 'audio_cache'))
         LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
         LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
-        
+
         IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
         WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
-        
+
         GREEN_CIRCLE = config.get('output_symbols', {}).get('GREEN_CIRCLE', '\U0001F7E2')
         RED_CIRCLE = config.get('output_symbols', {}).get('RED_CIRCLE', '\U0001F534')
-        
+
         USER_AGENTS = config.get('user_agents', [])
-        
+
         ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
         NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
         NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
-        
+
         MUSIC_ENABLED = config.get('music', {}).get('enabled', False)
         PIXABAY_API_KEY = config.get('music', {}).get('pixabay_api_key', '')
-        MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', [])
+        PIXABAY_BASE_URL = config.get('music', {}).get('pixabay_base_url', 'https://pixabay.com/music/search/')
+        MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', ['background music'])
         MUSIC_MIN_DURATION = config.get('music', {}).get('min_duration', 60)
         MUSIC_GENRES = config.get('music', {}).get('preferred_genres', [])
+        AUDIO_CACHE_MAX_FILES = config.get('music', {}).get('cache_max_files', 50)
+
+        TTS_INTRO_ENABLED = config.get('music', {}).get('tts_intro', {}).get('enabled', False)
+        TTS_INTRO_VOICE_GENDER = config.get('music', {}).get('tts_intro', {}).get('voice_gender', 'female')
+        TTS_INTRO_RATE = config.get('music', {}).get('tts_intro', {}).get('rate', 150)
+        TTS_INTRO_VOLUME = config.get('music', {}).get('tts_intro', {}).get('volume', 0.9)
         
         YOUTUBE_CLIENT_ID = config.get('auth', {}).get('youtube', {}).get('client_id', '')
         YOUTUBE_CLIENT_SECRET = config.get('auth', {}).get('youtube', {}).get('client_secret', '')
