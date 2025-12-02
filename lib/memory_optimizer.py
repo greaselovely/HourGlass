@@ -119,30 +119,6 @@ class MemoryOptimizer:
         """Perform periodic light cleanup."""
         gc.collect()
     
-    def get_memory_report(self):
-        """
-        Generate a comprehensive memory usage report.
-        
-        Returns:
-            dict: Detailed memory report
-        """
-        current_memory = self._get_memory_usage()
-        system_info = self._get_system_memory_info()
-        
-        return {
-            'process_memory': {
-                'current_mb': round(current_memory, 2),
-                'peak_mb': round(self.peak_memory, 2),
-                'initial_mb': round(self.initial_memory, 2),
-                'increase_mb': round(current_memory - self.initial_memory, 2)
-            },
-            'system_memory': system_info,
-            'gc_stats': {
-                'collections': gc.get_count(),
-                'thresholds': gc.get_threshold()
-            }
-        }
-
 
 @contextmanager
 def memory_managed_operation(operation_name="", force_cleanup_after=True):
@@ -175,38 +151,6 @@ def memory_managed_operation(operation_name="", force_cleanup_after=True):
             message_processor(
                 f"Memory {direction} by {abs(memory_change):.1f}MB during {operation_name}"
             )
-
-def get_system_performance_info():
-    """
-    Get comprehensive system performance information.
-    
-    Returns:
-        dict: System performance metrics
-    """
-    try:
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
-        return {
-            'cpu': {
-                'percent': cpu_percent,
-                'count': psutil.cpu_count(),
-                'freq_mhz': psutil.cpu_freq().current if psutil.cpu_freq() else None
-            },
-            'memory': {
-                'total_gb': round(memory.total / (1024**3), 2),
-                'available_gb': round(memory.available / (1024**3), 2),
-                'percent_used': memory.percent
-            },
-            'disk': {
-                'total_gb': round(disk.total / (1024**3), 2),
-                'free_gb': round(disk.free / (1024**3), 2),
-                'percent_used': round((disk.used / disk.total) * 100, 2)
-            }
-        }
-    except Exception as e:
-        return {'error': f"Failed to get performance info: {e}"}
 
 
 def monitor_resource_usage(operation_func, *args, **kwargs):

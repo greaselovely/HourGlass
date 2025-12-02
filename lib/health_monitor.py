@@ -576,64 +576,16 @@ class HealthMonitor:
         if stat_name == 'images_captured':
             self.performance_stats['last_image_time'] = datetime.now()
     
-    def get_health_summary(self) -> Dict:
-        """Get a summary of recent health status."""
-        if not self.health_history:
-            return {"status": "no_data", "message": "No health data available"}
-        
-        latest = self.health_history[-1]
-        
-        return {
-            "overall_status": latest['overall_status'],
-            "timestamp": latest['timestamp'].isoformat(),
-            "uptime_hours": round(latest['uptime_hours'], 2),
-            "critical_issues": len([m for m in latest['metrics'] if m['status'] == 'critical']),
-            "warnings": len([m for m in latest['metrics'] if m['status'] == 'warning']),
-            "performance": latest['performance_stats']
-        }
-
 
 def create_health_monitor(config, check_interval=300):
     """
     Factory function to create a health monitor.
-    
+
     Args:
         config: HourGlass configuration
         check_interval: Seconds between checks
-        
+
     Returns:
         HealthMonitor: Configured health monitor instance
     """
     return HealthMonitor(config, check_interval)
-
-
-# Quick health check functions for integration
-def quick_health_check(config) -> str:
-    """
-    Perform a quick health check and return status.
-    
-    Returns:
-        str: 'healthy', 'warning', or 'critical'
-    """
-    monitor = HealthMonitor(config)
-    report = monitor.perform_health_check()
-    return report['overall_status']
-
-
-def log_health_summary(config):
-    """Log a health summary for monitoring."""
-    monitor = HealthMonitor(config)
-    report = monitor.perform_health_check()
-    
-    summary = f"Health Check: {report['overall_status']} - "
-    critical = len([m for m in report['metrics'] if m['status'] == 'critical'])
-    warnings = len([m for m in report['metrics'] if m['status'] == 'warning'])
-    
-    if critical > 0:
-        summary += f"{critical} critical issues, "
-    if warnings > 0:
-        summary += f"{warnings} warnings, "
-    
-    summary += f"uptime: {report['uptime_hours']:.1f}h"
-    
-    logging.info(summary)

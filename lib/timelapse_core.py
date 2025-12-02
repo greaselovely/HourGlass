@@ -333,7 +333,8 @@ class ImageDownloader:
                     
                     # Save the image
                     today_short_time = (datetime.now() + timedelta(hours=self.time_offset)).strftime("%H%M%S")
-                    filename = datetime.now().strftime(FILENAME_FORMAT)
+                    filename_format = self.config.get('capture', {}).get('FILENAME_FORMAT', FILENAME_FORMAT)
+                    filename = datetime.now().strftime(filename_format)
                     
                     with open(self.out_path / filename, 'wb') as f:
                         f.write(image_content)
@@ -910,73 +911,121 @@ def add_to_audio_cache(audio_path, cache_folder, max_files):
         message_processor(f"Failed to add audio to cache: {e}", "error")
         return None
 
-def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = None) -> tuple[str | None, float | None]:
+def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = None,
+                     target_duration_sec: float | None = None, multiple: bool = False):
     """
-    Retrieves a random audio file from the cache.
+    Retrieves audio file(s) from the cache.
 
     Args:
         cache_folder (str or Path): Path to the audio cache folder
-        min_duration_sec (float, optional): Minimum duration in seconds
+        min_duration_sec (float, optional): Minimum duration for single file selection
+        target_duration_sec (float, optional): Target total duration for multiple file selection
+        multiple (bool): If True, returns list of multiple files to meet target_duration_sec.
+                        If False, returns single file meeting min_duration_sec.
 
     Returns:
-        tuple: (audio_path, duration_ms) or (None, None) if no suitable file found
+        If multiple=False: tuple (audio_path, duration_ms) or (None, None) if no suitable file found
+        If multiple=True: list of tuples [(audio_path, duration_sec), ...] or empty list
     """
     try:
         cache_folder = Path(cache_folder)
 
         if not cache_folder.exists():
             message_processor("Audio cache folder does not exist", "warning")
-            return None, None
+            return [] if multiple else (None, None)
 
         # Get all cached audio files
         cached_files = list(cache_folder.glob('*.mp3'))
 
         if not cached_files:
             message_processor("Audio cache is empty", "warning", ntfy=True)
-            return None, None
+            return [] if multiple else (None, None)
 
-        # Find all files that meet duration requirement, then randomly select one
-        suitable_files = []
+        # Get durations for all valid files
+        available_files = []
 
         for cached_file in cached_files:
             try:
                 with AudioFileClip(str(cached_file)) as audio_clip:
                     duration_sec = audio_clip.duration
-
-                # Check if it meets minimum duration requirement
-                if min_duration_sec and duration_sec < min_duration_sec:
-                    continue  # Skip this file
-
-                # Add to suitable files list
-                suitable_files.append((cached_file, duration_sec))
-
+                available_files.append((cached_file, duration_sec))
             except Exception as e:
                 message_processor(f"Error verifying cached audio {cached_file.name}: {e}", "error")
                 # Remove corrupted file
-                cached_file.unlink()
-                message_processor(f"Removed corrupted cached audio: {cached_file.name}", "info")
+                try:
+                    cached_file.unlink()
+                    message_processor(f"Removed corrupted cached audio: {cached_file.name}", "info")
+                except:
+                    pass
                 continue
 
-        if not suitable_files:
-            # No suitable file found
-            message_processor(
-                f"No cached audio file meets minimum duration ({min_duration_sec:.1f}s)",
-                "warning"
-            )
-            return None, None
+        if not available_files:
+            message_processor("No valid cached audio files found", "warning")
+            return [] if multiple else (None, None)
 
-        # Randomly select from suitable files
-        selected_file, duration_sec = choice(suitable_files)
-        message_processor(
-            f"Randomly selected cached audio: {selected_file.name} ({duration_sec:.1f}s) "
-            f"from {len(suitable_files)} suitable files",
-            "info"
-        )
-        return str(selected_file), duration_sec * 1000  # Return duration in milliseconds
+        # Multiple file selection mode
+        if multiple:
+            target = target_duration_sec if target_duration_sec else 0
+
+            # Randomly select files until we meet the target duration
+            selected_songs = []
+            total_duration = 0
+
+            # Shuffle to randomize selection
+            from random import shuffle
+            available_files_copy = available_files.copy()
+            shuffle(available_files_copy)
+
+            for cached_file, duration_sec in available_files_copy:
+                selected_songs.append((str(cached_file), duration_sec))
+                total_duration += duration_sec
+
+                if total_duration >= target:
+                    break
+
+            if total_duration < target:
+                message_processor(
+                    f"Cache exhausted: got {total_duration:.1f}s from {len(selected_songs)} files, "
+                    f"needed {target:.1f}s",
+                    "warning"
+                )
+                # Return what we have anyway
+            else:
+                message_processor(
+                    f"Selected {len(selected_songs)} cached audio files ({total_duration:.1f}s total)",
+                    "info"
+                )
+
+            return selected_songs
+
+        # Single file selection mode
+        else:
+            # Filter by minimum duration if specified
+            suitable_files = []
+            for cached_file, duration_sec in available_files:
+                if min_duration_sec and duration_sec < min_duration_sec:
+                    continue  # Skip files that are too short
+                suitable_files.append((cached_file, duration_sec))
+
+            if not suitable_files:
+                message_processor(
+                    f"No cached audio file meets minimum duration ({min_duration_sec:.1f}s)",
+                    "warning"
+                )
+                return None, None
+
+            # Randomly select from suitable files
+            selected_file, duration_sec = choice(suitable_files)
+            message_processor(
+                f"Randomly selected cached audio: {selected_file.name} ({duration_sec:.1f}s) "
+                f"from {len(suitable_files)} suitable files",
+                "info"
+            )
+            return str(selected_file), duration_sec * 1000  # Return duration in milliseconds
 
     except Exception as e:
         message_processor(f"Error retrieving cached audio: {e}", "error")
-        return None, None
+        return [] if multiple else (None, None)
 
 def get_cache_stats(cache_folder):
     """
@@ -1101,87 +1150,6 @@ def check_socks_proxy(config):
 
     return {'reachable': True, 'method': 'none', 'error': None}
 
-def check_pixabay_status(session):
-    """
-    Check if Pixabay is accessible and not blocking us.
-
-    Args:
-        session: requests.Session or cloudscraper session
-
-    Returns:
-        dict: Status information with keys:
-            - 'accessible': bool
-            - 'status_code': int
-            - 'blocked_by_cloudflare': bool
-            - 'error': str (if not accessible)
-    """
-    test_url = "https://pixabay.com/"
-
-    try:
-        response = session.get(test_url, timeout=10)
-        status_code = response.status_code
-
-        # Check for Cloudflare block
-        is_cloudflare = False
-        if status_code == 403 or status_code == 503:
-            response_text = response.text.lower()
-            if 'cloudflare' in response_text or 'cf-ray' in response_text:
-                is_cloudflare = True
-                error_msg = f"Pixabay blocked by Cloudflare (Status: {status_code})"
-                message_processor(error_msg, "error", ntfy=True)
-                return {
-                    'accessible': False,
-                    'status_code': status_code,
-                    'blocked_by_cloudflare': True,
-                    'error': 'Cloudflare protection active'
-                }
-
-        if status_code == 200:
-            message_processor(f"Pixabay accessible (Status: {status_code})", "info")
-            return {
-                'accessible': True,
-                'status_code': status_code,
-                'blocked_by_cloudflare': False,
-                'error': None
-            }
-        else:
-            error_msg = f"⚠️ Pixabay returned status code: {status_code}"
-            message_processor(error_msg, "warning")
-            return {
-                'accessible': False,
-                'status_code': status_code,
-                'blocked_by_cloudflare': is_cloudflare,
-                'error': f'HTTP {status_code}'
-            }
-
-    except requests.exceptions.Timeout:
-        error_msg = "⏱️ Pixabay connection timeout"
-        message_processor(error_msg, "error", ntfy=True)
-        return {
-            'accessible': False,
-            'status_code': None,
-            'blocked_by_cloudflare': False,
-            'error': 'Connection timeout'
-        }
-    except requests.exceptions.ConnectionError as e:
-        error_msg = f"🔌 Pixabay connection error: {e}"
-        message_processor(error_msg, "error", ntfy=True)
-        return {
-            'accessible': False,
-            'status_code': None,
-            'blocked_by_cloudflare': False,
-            'error': f'Connection error: {e}'
-        }
-    except Exception as e:
-        error_msg = f"❌ Error checking Pixabay: {e}"
-        message_processor(error_msg, "error")
-        return {
-            'accessible': False,
-            'status_code': None,
-            'blocked_by_cloudflare': False,
-            'error': str(e)
-        }
-
 def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None):
     """
     Downloads a random song from Pixabay and tests its usability.
@@ -1259,11 +1227,11 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
             # Get base URL and search term from config if available
             if config and 'music' in config:
                 base_url = config['music'].get('pixabay_base_url', 'https://pixabay.com/music/search/')
-                search_terms = config['music'].get('search_terms', ['background music'])
-                search_term = search_terms[0] if search_terms else 'background music'
+                search_terms = config['music'].get('search_terms', ['no copyright music'])
+                search_term = search_terms[0] if search_terms else 'no copyright music'
             else:
                 base_url = 'https://pixabay.com/music/search/'
-                search_term = 'background music'
+                search_term = 'no copyright music'
             
             page1_url = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/"
             
@@ -1507,20 +1475,21 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
         )
         message_processor("Attempting to use cached audio as fallback...", "info")
 
-        # Try to get cached audio
-        cached_audio_path, cached_duration_ms = get_cached_audio(
+        # Try to get multiple cached audio files
+        cached_songs = get_cached_audio(
             cache_folder,
-            min_duration_sec=video_duration / 1000
+            target_duration_sec=video_duration / 1000,
+            multiple=True
         )
 
-        if cached_audio_path and cached_duration_ms:
-            cached_duration_sec = cached_duration_ms / 1000
+        if cached_songs:
+            total_cached_duration = sum(duration for _, duration in cached_songs)
             message_processor(
-                f"Using cached audio ({cached_duration_sec:.1f}s)",
+                f"Using {len(cached_songs)} cached audio file(s) ({total_cached_duration:.1f}s total)",
                 "info",
                 ntfy=True
             )
-            return [(cached_audio_path, cached_duration_sec)]
+            return cached_songs
         else:
             message_processor(
                 f"No suitable cached audio found. Cache has {cache_stats['count']} files",

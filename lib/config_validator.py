@@ -367,32 +367,3 @@ def validate_config_quick(config_path='config.json'):
     return result['valid']
 
 
-def get_config_recommendations(config_path='config.json'):
-    """
-    Get configuration improvement recommendations.
-    
-    Args:
-        config_path (str): Path to configuration file
-        
-    Returns:
-        list: List of recommendation strings
-    """
-    validator = ConfigValidator(config_path)
-    config = validator._load_config()
-    
-    if not config:
-        return ["Cannot load configuration file"]
-    
-    recommendations = []
-    
-    # Check for common improvements
-    if 'alerts' in config and not config['alerts'].get('ntfy'):
-        recommendations.append("Configure NTFY notifications for better monitoring")
-        
-    if 'proxies' in config and not any(config['proxies'].values()):
-        recommendations.append("Consider configuring proxies if needed for your network")
-        
-    if len(config.get('user_agents', [])) < 5:
-        recommendations.append("Add more user agents for better web scraping resilience")
-        
-    return recommendations

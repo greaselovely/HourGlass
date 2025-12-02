@@ -274,23 +274,21 @@ def create_initial_config(existing_config=None, project_name=None):
     print("\n[6/8] Audio Configuration (for video creation)")
     print("-" * 40)
     
-    use_music = input("Add background music to videos? (y/n) [n]: ").strip().lower() == 'y'
-    
+    use_music = input("Add no copyright music to videos? (y/n) [n]: ").strip().lower() == 'y'
+
     if use_music:
         config["music"]["enabled"] = True
         config["music"]["pixabay_base_url"] = "https://pixabay.com/music/search/"
         config["music"]["pixabay_api_key"] = input("Pixabay API key (optional): ").strip()
-        # Always use 'background music' as the search term
-        config["music"]["search_terms"] = ["background music"]
+        # Always use 'no copyright music' as the search term
+        config["music"]["search_terms"] = ["no copyright music"]
         config["music"]["min_duration"] = 60
-        config["music"]["preferred_genres"] = ["ambient", "classical", "electronic"]
     else:
         config["music"]["enabled"] = False
         config["music"]["pixabay_base_url"] = "https://pixabay.com/music/search/"
         config["music"]["pixabay_api_key"] = ""
-        config["music"]["search_terms"] = ["background music"]
+        config["music"]["search_terms"] = ["no copyright music"]
         config["music"]["min_duration"] = 60
-        config["music"]["preferred_genres"] = []
     
     # Proxy settings
     print("\n[7/8] Proxy Configuration (optional)")

@@ -181,6 +181,18 @@ def load_config(config_path=None):
 
         return config
 
+    def cleanup_deprecated_fields(config):
+        """
+        Remove deprecated fields from config that are no longer used.
+        This keeps config files clean and removes obsolete settings.
+        """
+        # Remove preferred_genres from music section (unused feature)
+        if 'music' in config and 'preferred_genres' in config['music']:
+            del config['music']['preferred_genres']
+            logging.info("Removed deprecated 'preferred_genres' from config")
+
+        return config
+
     def expand_config_paths(config):
         """
         Expand ~ to actual home directory for use in the application.
@@ -286,9 +298,8 @@ def load_config(config_path=None):
                 "enabled": False,
                 "pixabay_api_key": "",
                 "pixabay_base_url": "https://pixabay.com/music/search/",
-                "search_terms": ["background music"],
+                "search_terms": ["no copyright music"],
                 "min_duration": 60,
-                "preferred_genres": [],
                 "cache_max_files": 50,
                 "tts_intro": {
                     "enabled": False,
@@ -384,6 +395,10 @@ def load_config(config_path=None):
 
         # Normalize paths to use ~ (for portability)
         config = normalize_paths(config)
+
+        # Clean up deprecated fields
+        config = cleanup_deprecated_fields(config)
+
         config = update_config(config)
 
         # Write updated config back to file (with ~ paths for portability)
@@ -473,9 +488,8 @@ NTFY_URL = 'http://ntfy.sh/'
 MUSIC_ENABLED = False
 PIXABAY_API_KEY = ''
 PIXABAY_BASE_URL = 'https://pixabay.com/music/search/'
-MUSIC_SEARCH_TERMS = ['background music']
+MUSIC_SEARCH_TERMS = ['no copyright music']
 MUSIC_MIN_DURATION = 60
-MUSIC_GENRES = []
 AUDIO_CACHE_MAX_FILES = 50
 
 # TTS Intro settings
@@ -503,120 +517,3 @@ CACHE_IMAGES = True
 
 today_short_date = datetime.now().strftime("%m%d%Y")
 
-def reload_config():
-    """
-    Reload the configuration settings from the config file.
-
-    This function reloads the configuration from the config file and updates all global variables.
-    It's useful for refreshing the configuration during runtime without restarting the application.
-
-    The function performs the following steps:
-    1. Calls load_config() to reload the configuration from file.
-    2. If successful, updates all global variables with the new configuration values.
-    3. If unsuccessful, logs an error message.
-
-    Global Variables Updated:
-    - All global variables defined in the main configuration loading section.
-
-    Returns:
-    None
-
-    Side Effects:
-    - Updates global variables if successful.
-    - Logs information about the reloading process.
-
-    Note:
-    - This function assumes that all global variables are already defined.
-    - It uses the same load_config() function used for initial configuration loading.
-    """
-    global config, PROJECT_NAME, PROJECT_DESCRIPTION, IMAGE_PATTERN, FILENAME_FORMAT, CAPTURE_INTERVAL
-    global MAX_RETRIES, RETRY_DELAY, VIDEO_FPS, VIDEO_FORMAT, VIDEO_CODEC, VIDEO_FILENAME_FORMAT
-    global PROXIES, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUN_URL, TIME_OFFSET_HOURS
-    global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
-    global LOG_FILE_NAME, LOGGING_FILE, IMAGE_URL, WEBPAGE, GREEN_CIRCLE, RED_CIRCLE
-    global USER_AGENTS, ALERTS_ENABLED, NTFY_TOPIC, NTFY_URL, today_short_date
-    global MUSIC_ENABLED, PIXABAY_API_KEY, MUSIC_SEARCH_TERMS, MUSIC_MIN_DURATION, MUSIC_GENRES
-    global YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN, YOUTUBE_PLAYLIST_NAME
-    global TMUX_SESSION_NAME, TMUX_ENABLE_SPLIT, TMUX_LOG_PANE_SIZE
-    global MEMORY_LIMIT_MB, BATCH_SIZE, PARALLEL_DOWNLOADS, CACHE_IMAGES, VALID_IMAGES_FILE
-
-    logging.info("Reloading configuration")
-    config = load_config()
-    if config:
-        # Reload all configuration variables
-        PROJECT_NAME = config.get('project', {}).get('name', 'default')
-        PROJECT_DESCRIPTION = config.get('project', {}).get('description', '')
-        
-        IMAGE_PATTERN = config.get('capture', {}).get('IMAGE_PATTERN', f'{PROJECT_NAME}.*.jpg')
-        FILENAME_FORMAT = config.get('capture', {}).get('FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.%H%M%S.jpg')
-        CAPTURE_INTERVAL = config.get('capture', {}).get('CAPTURE_INTERVAL', 30)
-        MAX_RETRIES = config.get('capture', {}).get('MAX_RETRIES', 3)
-        RETRY_DELAY = config.get('capture', {}).get('RETRY_DELAY', 5)
-        
-        VIDEO_FPS = config.get('video', {}).get('FPS', 10)
-        VIDEO_FORMAT = config.get('video', {}).get('OUTPUT_FORMAT', 'mp4')
-        VIDEO_CODEC = config.get('video', {}).get('CODEC', 'libx264')
-        VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
-        
-        PROXIES = config.get('proxies', {})
-        
-        SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
-        SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
-        SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
-        SUN_URL = config.get('sun', {}).get('URL', '')
-        TIME_OFFSET_HOURS = config.get('sun', {}).get('TIME_OFFSET_HOURS', 0)
-        
-        PROJECT_BASE = config['files_and_folders'].get('PROJECT_BASE', os.path.join(Path.home(), 'HourGlass', PROJECT_NAME))
-        VIDEO_FOLDER = config['files_and_folders'].get('VIDEO_FOLDER', os.path.join(PROJECT_BASE, 'video'))
-        IMAGES_FOLDER = config['files_and_folders'].get('IMAGES_FOLDER', os.path.join(PROJECT_BASE, 'images'))
-        VALID_IMAGES_FILE = config['files_and_folders'].get('VALID_IMAGES_FILE', 'valid_images.json')
-        LOGGING_FOLDER = config['files_and_folders'].get('LOGGING_FOLDER', os.path.join(PROJECT_BASE, 'logging'))
-        AUDIO_FOLDER = config['files_and_folders'].get('AUDIO_FOLDER', os.path.join(PROJECT_BASE, 'audio'))
-        AUDIO_CACHE_FOLDER = config['files_and_folders'].get('AUDIO_CACHE_FOLDER', os.path.join(PROJECT_BASE, 'audio_cache'))
-        LOG_FILE_NAME = config['files_and_folders'].get('LOG_FILE_NAME', 'timelapse.log')
-        LOGGING_FILE = os.path.join(LOGGING_FOLDER, LOG_FILE_NAME)
-
-        IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
-        WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
-
-        GREEN_CIRCLE = config.get('output_symbols', {}).get('GREEN_CIRCLE', '\U0001F7E2')
-        RED_CIRCLE = config.get('output_symbols', {}).get('RED_CIRCLE', '\U0001F534')
-
-        USER_AGENTS = config.get('user_agents', [])
-
-        ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
-        NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
-        NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
-
-        MUSIC_ENABLED = config.get('music', {}).get('enabled', False)
-        PIXABAY_API_KEY = config.get('music', {}).get('pixabay_api_key', '')
-        PIXABAY_BASE_URL = config.get('music', {}).get('pixabay_base_url', 'https://pixabay.com/music/search/')
-        MUSIC_SEARCH_TERMS = config.get('music', {}).get('search_terms', ['background music'])
-        MUSIC_MIN_DURATION = config.get('music', {}).get('min_duration', 60)
-        MUSIC_GENRES = config.get('music', {}).get('preferred_genres', [])
-        AUDIO_CACHE_MAX_FILES = config.get('music', {}).get('cache_max_files', 50)
-
-        TTS_INTRO_ENABLED = config.get('music', {}).get('tts_intro', {}).get('enabled', False)
-        TTS_INTRO_VOICE_GENDER = config.get('music', {}).get('tts_intro', {}).get('voice_gender', 'female')
-        TTS_INTRO_RATE = config.get('music', {}).get('tts_intro', {}).get('rate', 150)
-        TTS_INTRO_VOLUME = config.get('music', {}).get('tts_intro', {}).get('volume', 0.9)
-        
-        YOUTUBE_CLIENT_ID = config.get('auth', {}).get('youtube', {}).get('client_id', '')
-        YOUTUBE_CLIENT_SECRET = config.get('auth', {}).get('youtube', {}).get('client_secret', '')
-        YOUTUBE_REFRESH_TOKEN = config.get('auth', {}).get('youtube', {}).get('refresh_token', '')
-        YOUTUBE_PLAYLIST_NAME = config.get('auth', {}).get('youtube', {}).get('playlist_name', PROJECT_NAME)
-        
-        TMUX_SESSION_NAME = config.get('tmux', {}).get('session_name', f'hourglass-{PROJECT_NAME.lower()}')
-        TMUX_ENABLE_SPLIT = config.get('tmux', {}).get('enable_split', True)
-        TMUX_LOG_PANE_SIZE = config.get('tmux', {}).get('log_pane_size', 20)
-        
-        MEMORY_LIMIT_MB = config.get('performance', {}).get('memory_limit_mb', 1024)
-        BATCH_SIZE = config.get('performance', {}).get('batch_size', 100)
-        PARALLEL_DOWNLOADS = config.get('performance', {}).get('parallel_downloads', 3)
-        CACHE_IMAGES = config.get('performance', {}).get('cache_images', True)
-        
-        today_short_date = datetime.now().strftime("%m%d%Y")
-
-        logging.info("Configuration reloaded successfully")
-    else:
-        logging.error("Failed to reload configuration")

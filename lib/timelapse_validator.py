@@ -188,43 +188,6 @@ def validate_images_thorough(run_images_folder, run_valid_images_file):
     return valid_files, len(valid_files)
 
 
-def get_validation_stats(run_images_folder):
-    """
-    Get statistics about images in a folder without full validation.
-    Useful for quick health checks.
-    
-    Args:
-        run_images_folder (str): Directory to analyze
-        
-    Returns:
-        dict: Statistics about the image folder
-    """
-    folder_path = Path(run_images_folder)
-    
-    if not folder_path.exists():
-        return {"error": "Folder does not exist"}
-    
-    all_files = list(folder_path.iterdir())
-    jpg_files = [f for f in all_files if f.suffix.lower() in ['.jpg', '.jpeg']]
-    
-    total_size = sum(f.stat().st_size for f in jpg_files if f.is_file())
-    
-    size_stats = {
-        'total_files': len(all_files),
-        'jpg_files': len(jpg_files),
-        'total_size_mb': round(total_size / (1024 * 1024), 2),
-        'avg_size_kb': round((total_size / len(jpg_files)) / 1024, 2) if jpg_files else 0
-    }
-    
-    if jpg_files:
-        file_sizes = [f.stat().st_size for f in jpg_files]
-        size_stats.update({
-            'min_size_kb': round(min(file_sizes) / 1024, 2),
-            'max_size_kb': round(max(file_sizes) / 1024, 2)
-        })
-    
-    return size_stats
-
 
 # Compatibility function to maintain API
 def validate_images(run_images_folder, run_valid_images_file, use_fast=True):
