@@ -889,7 +889,7 @@ def main():
         time_offset = config["sun"]["TIME_OFFSET_HOURS"]
 
     # Validate configuration
-    if not validate_config_quick():
+    if not validate_config_quick(config_path):
         message_processor("Configuration validation failed. Check logs for details.", "warning")
     
     # Note: Full health monitoring will start later and provide detailed status
@@ -944,7 +944,7 @@ def main():
         return
     
     if args.validate:
-        validator = ConfigValidator()
+        validator = ConfigValidator(config_path)
         result = validator.validate_config(config)
         health_result = validator.health_check(config)
         
