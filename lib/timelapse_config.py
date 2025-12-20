@@ -283,6 +283,7 @@ def load_config(config_path=None):
             "files_and_folders": {
                 "LOG_FILE_NAME": "timelapse.log",
                 "VALID_IMAGES_FILE": "valid_images.json",
+                "SONG_HISTORY_FILE": "song_history.json",
                 "PROJECT_BASE": str(project_base),
                 "VIDEO_FOLDER": os.path.join(project_base, "video"),
                 "IMAGES_FOLDER": os.path.join(project_base, "images"),
@@ -303,7 +304,8 @@ def load_config(config_path=None):
                 "cache_max_files": 50,
                 "tts_intro": {
                     "enabled": False,
-                    "voice_gender": "female",
+                    "engine": "edge",
+                    "voice": "en-US-AriaNeural",
                     "rate": 150,
                     "volume": 0.9
                 }
@@ -462,6 +464,7 @@ PROJECT_BASE = os.path.join(Path.home(), 'HourGlass', 'default')
 VIDEO_FOLDER = os.path.join(PROJECT_BASE, 'video')
 IMAGES_FOLDER = os.path.join(PROJECT_BASE, 'images')
 VALID_IMAGES_FILE = 'valid_images.json'
+SONG_HISTORY_FILE = 'song_history.json'
 LOGGING_FOLDER = os.path.join(PROJECT_BASE, 'logging')
 AUDIO_FOLDER = os.path.join(PROJECT_BASE, 'audio')
 AUDIO_CACHE_FOLDER = os.path.join(PROJECT_BASE, 'audio_cache')
@@ -492,9 +495,8 @@ MUSIC_SEARCH_TERMS = ['no copyright music']
 MUSIC_MIN_DURATION = 60
 AUDIO_CACHE_MAX_FILES = 50
 
-# TTS Intro settings
+# TTS Intro settings (randomly selects engine and voice for variety)
 TTS_INTRO_ENABLED = True
-TTS_INTRO_VOICE_GENDER = 'female'
 TTS_INTRO_RATE = 150
 TTS_INTRO_VOLUME = 0.9
 

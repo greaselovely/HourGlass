@@ -12,7 +12,9 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 - **Duplicate Avoidance:** Uses SHA-256 hashing to prevent saving duplicate images
 - **Time-Lapse Video Creation:** Generates high-quality time-lapse videos from collected images
 - **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos using Pixabay
-- **TTS Intro:** Optional text-to-speech intro using Google Cloud TTS
+- **Even Audio Distribution:** Songs split evenly across video with 5-second crossfades
+- **Song History Tracking:** 180-day history prevents song repetition across videos
+- **TTS Intro:** Random voice selection from Edge TTS (free) and Google Cloud TTS
 
 ### Enhanced Capabilities
 - **Robust Error Handling:** Exponential backoff and automatic session recovery
@@ -39,6 +41,7 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 
 ## Optional Setup
 - **Google Cloud TTS:** For high-quality text-to-speech intros. See [GOOGLE_TTS_SETUP.md](GOOGLE_TTS_SETUP.md) for setup instructions.
+- **Edge TTS:** Free alternative that works out of the box with no API key required. The system randomly selects between Edge and Google (if configured) for voice variety.
 
 ## Quick Start
 
@@ -69,6 +72,12 @@ python main.py <project_name> --no-time-check
 ```bash
 # Generate video from existing images
 python main.py <project_name> --movie
+```
+
+### 4. Test Compilation Pipeline
+```bash
+# Generate test images and run full video compilation without real captures
+python main.py <project_name> --test-compile
 ```
 
 ## Project Structure

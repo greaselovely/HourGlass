@@ -254,7 +254,7 @@ def test_audio_download(config, duration_seconds=60, debug=False, test_network=F
         user_agent_override: Override the user agent for testing
     """
     from datetime import datetime
-    from lib.timelapse_core import audio_download, concatenate_songs, message_processor, create_tts_intro, combine_tts_with_music
+    from lib.timelapse_core import audio_download, concatenate_songs, distribute_songs_evenly, message_processor, create_tts_intro, combine_tts_with_music
     from moviepy.editor import AudioFileClip
     import os
     
@@ -564,28 +564,30 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                 )
 
             if audio_result:
-                # Prepare final audio
-                if len(audio_result) >= 2:
-                    message_processor("Concatenating multiple audio tracks")
-                    final_song = concatenate_songs(audio_result)
-                    audio_source = "PIXABAY"
-                else:
-                    # Handle single audio file - check if it's a tuple or just a path
-                    if isinstance(audio_result[0], tuple) and len(audio_result[0]) > 0:
-                        song_path = audio_result[0][0]  # Extract path from tuple
-                        # Check if this is from cache (cached files have 'cached_' prefix)
-                        if 'cached_' in os.path.basename(song_path):
-                            audio_source = "CACHED"
-                        else:
-                            audio_source = "PIXABAY"
-                        final_song = song_path
+                # Prepare final audio - distribute songs evenly across video
+                video_duration_sec = duration_threshold / 1000
+                message_processor(f"Distributing {len(audio_result)} audio track(s) across {video_duration_sec:.1f}s video")
+
+                # Use distribute_songs_evenly for smooth, even audio distribution
+                final_song = distribute_songs_evenly(
+                    audio_result,
+                    video_duration_sec,
+                    crossfade_seconds=5,
+                    fadeout_seconds=3
+                )
+
+                # Determine audio source for logging
+                if isinstance(audio_result[0], tuple) and len(audio_result[0]) > 0:
+                    song_path = audio_result[0][0]
+                    if 'cached_' in os.path.basename(song_path):
+                        audio_source = "CACHED"
                     else:
-                        final_song = audio_result[0]  # Use the result directly
                         audio_source = "PIXABAY"
-                    message_processor("Using single audio track")
+                else:
+                    audio_source = "PIXABAY"
 
                 # Add TTS intro if enabled
-                from lib.timelapse_config import TTS_INTRO_ENABLED, TTS_INTRO_VOICE_GENDER, TTS_INTRO_RATE, TTS_INTRO_VOLUME
+                from lib.timelapse_config import TTS_INTRO_ENABLED, TTS_INTRO_RATE, TTS_INTRO_VOLUME
                 if TTS_INTRO_ENABLED:
                     # Get TTS text from project description
                     project_description = config.get('project', {}).get('description', '')
@@ -600,7 +602,6 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                         tts_result, tts_duration = create_tts_intro(
                             tts_text,
                             tts_output,
-                            voice_gender=TTS_INTRO_VOICE_GENDER,
                             rate=TTS_INTRO_RATE,
                             volume=TTS_INTRO_VOLUME
                         )
@@ -772,6 +773,8 @@ def main():
                        help="Override user agent for testing (use 'curl' for curl UA, 'chrome' for Chrome, etc.)")
     parser.add_argument("--cache", action="store_true",
                        help="Use cached audio instead of downloading (for testing)")
+    parser.add_argument("--test-compile", action="store_true",
+                       help="Generate test images and compile video (tests full pipeline without image downloads)")
     args = parser.parse_args()
     
     # ===== AUTO-SETUP WHEN NO PROJECT OR CONFIG MISSING =====
@@ -920,14 +923,74 @@ def main():
     if args.test_audio:
         message_processor(f"Audio test mode for project: {args.project}", "info")
         test_result = test_audio_download(
-            config, 
-            args.audio_duration, 
+            config,
+            args.audio_duration,
             args.debug,
             args.test_network,
             args.user_agent
         )
         sys.exit(0 if test_result else 1)
-    
+
+    # Handle test-compile mode: generate test images and compile video
+    if args.test_compile:
+        message_processor(f"Test compile mode for project: {args.project}", "info", ntfy=True)
+
+        try:
+            # Import image_dup functions
+            from lib.image_dup import generate_images, get_or_create_run_id as get_test_run_id
+
+            # Generate a unique run_id for this test
+            test_run_id = get_test_run_id()
+            message_processor(f"Test Run ID: {test_run_id}", "info")
+
+            # Generate test images using image_dup defaults (10fps * 120s = 1200 images)
+            message_processor("Generating test images...", "info")
+            generate_images(
+                fps=config.get('video', {}).get('fps', 10),
+                duration=120,  # 2 minute video worth of images
+                interval=15,   # 15 second intervals (simulated time)
+                source_filename="base_image.jpg",
+                run_id=test_run_id,
+                config=config
+            )
+
+            # Set up paths for the test run
+            test_images_folder = os.path.join(IMAGES_FOLDER, test_run_id)
+            test_valid_images_file = os.path.join(test_images_folder, VALID_IMAGES_FILE)
+            test_audio_folder = os.path.join(AUDIO_FOLDER, test_run_id)
+            os.makedirs(test_audio_folder, exist_ok=True)
+
+            # Generate video filename with test prefix
+            test_video_filename = f"TEST_{datetime.now().strftime(VIDEO_FILENAME_FORMAT)}"
+            test_video_path = os.path.join(VIDEO_FOLDER, test_video_filename)
+
+            message_processor(f"Test images folder: {test_images_folder}", "info")
+            message_processor(f"Test video output: {test_video_path}", "info")
+
+            # Run the full compilation pipeline
+            main_sequence(
+                test_images_folder,
+                test_video_path,
+                test_audio_folder,
+                test_valid_images_file,
+                time_offset,
+                args.debug,
+                args.cache
+            )
+
+            message_processor("Test compile completed successfully!", "info", ntfy=True)
+
+        except Exception as e:
+            message_processor(f"Test compile failed: {e}", "error", ntfy=True)
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        finally:
+            if health_monitor:
+                health_monitor.stop_monitoring()
+
+        sys.exit(0)
+
     # Handle utility commands
     if args.health:
         health_monitor = create_health_monitor(config)

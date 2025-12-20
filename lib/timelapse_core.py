@@ -833,6 +833,228 @@ def calculate_video_duration(num_images, fps) -> int:
     duration_ms = int(duration_sec * 1000)
     return duration_ms
 
+
+# ============================================================================
+# Song History Tracking - Prevents song reuse within 180 days
+# ============================================================================
+
+SONG_HISTORY_RETENTION_DAYS = 180
+
+def load_song_history(history_file: str | Path) -> dict:
+    """
+    Loads song history from JSON file, auto-cleaning entries older than 180 days.
+
+    Args:
+        history_file: Path to the song_history.json file
+
+    Returns:
+        dict: Song history with structure:
+            {
+                "songs": {
+                    "<source_url>": {
+                        "name": str,
+                        "duration_sec": float,
+                        "source_url": str,
+                        "first_used": str (ISO datetime),
+                        "last_used": str (ISO datetime),
+                        "usage_count": int
+                    }
+                },
+                "metadata": {
+                    "last_cleanup": str (ISO datetime),
+                    "version": str
+                }
+            }
+    """
+    history_file = Path(history_file)
+
+    # Default empty history
+    default_history = {
+        "songs": {},
+        "metadata": {
+            "last_cleanup": datetime.now().isoformat(),
+            "version": "1.0"
+        }
+    }
+
+    if not history_file.exists():
+        message_processor("Song history file not found, starting fresh", "info")
+        return default_history
+
+    try:
+        with open(history_file, 'r', encoding='utf-8') as f:
+            history = json.load(f)
+
+        # Validate structure
+        if "songs" not in history:
+            history["songs"] = {}
+        if "metadata" not in history:
+            history["metadata"] = default_history["metadata"]
+
+        # Auto-cleanup old entries
+        history = cleanup_song_history(history)
+
+        message_processor(f"Loaded song history: {len(history['songs'])} songs tracked", "info")
+        return history
+
+    except (json.JSONDecodeError, IOError) as e:
+        message_processor(f"Error loading song history, starting fresh: {e}", "warning")
+        return default_history
+
+
+def save_song_history(history: dict, history_file: str | Path) -> bool:
+    """
+    Saves song history to JSON file.
+
+    Args:
+        history: The song history dictionary
+        history_file: Path to save the JSON file
+
+    Returns:
+        bool: True if saved successfully, False otherwise
+    """
+    history_file = Path(history_file)
+
+    try:
+        # Ensure parent directory exists
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+
+        return True
+
+    except IOError as e:
+        message_processor(f"Error saving song history: {e}", "error")
+        return False
+
+
+def cleanup_song_history(history: dict) -> dict:
+    """
+    Removes songs older than SONG_HISTORY_RETENTION_DAYS from history.
+
+    Args:
+        history: The song history dictionary
+
+    Returns:
+        dict: Cleaned history
+    """
+    from datetime import timedelta
+
+    cutoff_date = datetime.now() - timedelta(days=SONG_HISTORY_RETENTION_DAYS)
+    songs_to_remove = []
+
+    for source_url, song_data in history.get("songs", {}).items():
+        try:
+            last_used = datetime.fromisoformat(song_data.get("last_used", ""))
+            if last_used < cutoff_date:
+                songs_to_remove.append(source_url)
+        except (ValueError, TypeError):
+            # Invalid date format, keep the entry
+            continue
+
+    for url in songs_to_remove:
+        del history["songs"][url]
+
+    if songs_to_remove:
+        message_processor(f"Cleaned up {len(songs_to_remove)} expired songs from history", "info")
+
+    history["metadata"]["last_cleanup"] = datetime.now().isoformat()
+    return history
+
+
+def add_song_to_history(history: dict, source_url: str, song_name: str, duration_sec: float) -> dict:
+    """
+    Adds or updates a song in the history.
+
+    Args:
+        history: The song history dictionary
+        source_url: Unique URL identifier for the song
+        song_name: Human-readable song name
+        duration_sec: Duration in seconds
+
+    Returns:
+        dict: Updated history
+    """
+    now = datetime.now().isoformat()
+
+    if source_url in history["songs"]:
+        # Update existing entry
+        history["songs"][source_url]["last_used"] = now
+        history["songs"][source_url]["usage_count"] += 1
+        message_processor(
+            f"Song used again: {song_name[:30]}... (count: {history['songs'][source_url]['usage_count']})",
+            "info"
+        )
+    else:
+        # New entry
+        history["songs"][source_url] = {
+            "name": song_name,
+            "duration_sec": duration_sec,
+            "source_url": source_url,
+            "first_used": now,
+            "last_used": now,
+            "usage_count": 1
+        }
+        message_processor(f"New song added to history: {song_name[:30]}...", "info")
+
+    return history
+
+
+def is_song_in_history(history: dict, source_url: str) -> bool:
+    """
+    Checks if a song URL exists in the history (used within retention period).
+
+    Args:
+        history: The song history dictionary
+        source_url: URL to check
+
+    Returns:
+        bool: True if song is in history and should be skipped
+    """
+    return source_url in history.get("songs", {})
+
+
+def get_song_usage_count(history: dict, source_url: str) -> int:
+    """
+    Gets the usage count for a song.
+
+    Args:
+        history: The song history dictionary
+        source_url: URL to look up
+
+    Returns:
+        int: Usage count, or 0 if not found
+    """
+    return history.get("songs", {}).get(source_url, {}).get("usage_count", 0)
+
+
+def get_cached_file_usage_count(history: dict, cached_filename: str) -> int:
+    """
+    Gets usage count for a cached file by matching the song name in the filename.
+
+    Cached files have format: cached_{timestamp}_{song_name}.mp3
+    We match by checking if any song name is contained in the filename.
+
+    Args:
+        history: The song history dictionary
+        cached_filename: The cached file's name (not full path)
+
+    Returns:
+        int: Usage count, or 0 if no match found
+    """
+    # Extract the song name part from cached filename
+    # Format: cached_YYYYMMDD_HHMMSS_songname.mp3
+    for song_data in history.get("songs", {}).values():
+        song_name = song_data.get("name", "")
+        # Sanitize song name the same way it's done when caching
+        safe_name = re.sub(r'[^\w\s-]', '', song_name)[:50]
+        if safe_name and safe_name.lower() in cached_filename.lower():
+            return song_data.get("usage_count", 0)
+
+    return 0
+
+
 def manage_audio_cache(cache_folder, max_files):
     """
     Manages the audio cache folder using FIFO (First In, First Out) strategy.
@@ -912,9 +1134,13 @@ def add_to_audio_cache(audio_path, cache_folder, max_files):
         return None
 
 def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = None,
-                     target_duration_sec: float | None = None, multiple: bool = False):
+                     target_duration_sec: float | None = None, multiple: bool = False,
+                     song_history: dict | None = None, min_files: int = 1):
     """
     Retrieves audio file(s) from the cache.
+
+    When song_history is provided, files are sorted by lowest usage count (least used first).
+    This ensures variety when falling back to cached audio.
 
     Args:
         cache_folder (str or Path): Path to the audio cache folder
@@ -922,6 +1148,8 @@ def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = 
         target_duration_sec (float, optional): Target total duration for multiple file selection
         multiple (bool): If True, returns list of multiple files to meet target_duration_sec.
                         If False, returns single file meeting min_duration_sec.
+        song_history (dict, optional): Song history for sorting by usage count.
+        min_files (int): Minimum number of files to return when multiple=True. Default 1.
 
     Returns:
         If multiple=False: tuple (audio_path, duration_ms) or (None, None) if no suitable file found
@@ -967,23 +1195,43 @@ def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = 
         if multiple:
             target = target_duration_sec if target_duration_sec else 0
 
-            # Randomly select files until we meet the target duration
+            # Select files until we meet the target duration
             selected_songs = []
             total_duration = 0
 
-            # Shuffle to randomize selection
-            from random import shuffle
-            available_files_copy = available_files.copy()
-            shuffle(available_files_copy)
+            # Sort by usage count (lowest first) if history is available
+            # This ensures least-used songs are selected first
+            if song_history and song_history.get("songs"):
+                # Add usage count to each file for sorting
+                files_with_counts = []
+                for cached_file, duration_sec in available_files:
+                    usage_count = get_cached_file_usage_count(song_history, cached_file.name)
+                    files_with_counts.append((cached_file, duration_sec, usage_count))
 
-            for cached_file, duration_sec in available_files_copy:
+                # Sort by usage count (ascending), then shuffle within same count for variety
+                files_with_counts.sort(key=lambda x: x[2])
+
+                message_processor(
+                    f"Sorted {len(files_with_counts)} cached files by usage count (lowest first)",
+                    "info"
+                )
+
+                available_files_sorted = [(f, d) for f, d, _ in files_with_counts]
+            else:
+                # No history available - shuffle randomly as fallback
+                from random import shuffle
+                available_files_sorted = available_files.copy()
+                shuffle(available_files_sorted)
+
+            for cached_file, duration_sec in available_files_sorted:
                 selected_songs.append((str(cached_file), duration_sec))
                 total_duration += duration_sec
 
-                if total_duration >= target:
+                # Need both enough duration AND minimum number of files
+                if total_duration >= target and len(selected_songs) >= min_files:
                     break
 
-            if total_duration < target:
+            if total_duration < target or len(selected_songs) < min_files:
                 message_processor(
                     f"Cache exhausted: got {total_duration:.1f}s from {len(selected_songs)} files, "
                     f"needed {target:.1f}s",
@@ -1014,13 +1262,29 @@ def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = 
                 )
                 return None, None
 
-            # Randomly select from suitable files
-            selected_file, duration_sec = choice(suitable_files)
-            message_processor(
-                f"Randomly selected cached audio: {selected_file.name} ({duration_sec:.1f}s) "
-                f"from {len(suitable_files)} suitable files",
-                "info"
-            )
+            # Select file with lowest usage count if history available
+            if song_history and song_history.get("songs"):
+                files_with_counts = []
+                for cached_file, duration_sec in suitable_files:
+                    usage_count = get_cached_file_usage_count(song_history, cached_file.name)
+                    files_with_counts.append((cached_file, duration_sec, usage_count))
+
+                # Sort by usage count and pick the lowest
+                files_with_counts.sort(key=lambda x: x[2])
+                selected_file, duration_sec, usage_count = files_with_counts[0]
+                message_processor(
+                    f"Selected least-used cached audio: {selected_file.name} ({duration_sec:.1f}s, "
+                    f"used {usage_count} times) from {len(suitable_files)} suitable files",
+                    "info"
+                )
+            else:
+                # Randomly select from suitable files if no history
+                selected_file, duration_sec = choice(suitable_files)
+                message_processor(
+                    f"Randomly selected cached audio: {selected_file.name} ({duration_sec:.1f}s) "
+                    f"from {len(suitable_files)} suitable files",
+                    "info"
+                )
             return str(selected_file), duration_sec * 1000  # Return duration in milliseconds
 
     except Exception as e:
@@ -1150,26 +1414,34 @@ def check_socks_proxy(config):
 
     return {'reachable': True, 'method': 'none', 'error': None}
 
-def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None):
+def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None, song_history=None):
     """
     Downloads a random song from Pixabay and tests its usability.
 
     This function attempts to download a song up to 'max_attempts' times,
     testing each download to ensure it can be used by MoviePy.
 
+    Songs that have been used within the last 180 days (tracked in song_history)
+    are automatically skipped to ensure variety.
+
     Parameters:
     - AUDIO_FOLDER (str): Path to the folder where audio files will be saved.
     - max_attempts (int): Maximum number of download attempts. Defaults to 3.
     - debug (bool): If True, save HTML/JSON responses for debugging.
+    - config (dict): Configuration dictionary with proxy and music settings.
+    - song_history (dict): Song history dictionary for tracking used songs.
+                          If provided, songs already in history will be skipped.
 
     Returns:
-    - tuple: A tuple containing the path to the downloaded audio file and its duration,
-             or (None, None) if all attempts fail.
+    - tuple: A tuple containing (path, duration_ms, source_url) for the downloaded file,
+             or (None, None, None) if all attempts fail.
 
     Note:
     The function prints messages to the console indicating the status of each download
     and any errors encountered.
     """
+    if song_history is None:
+        song_history = {"songs": {}}
     # Create temp folder for debugging HTML responses if debug mode is enabled
     if debug:
         temp_folder = Path("pixabay_debug")
@@ -1334,30 +1606,56 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
             if not results:
                 message_processor("No songs found in response.", "error")
                 continue
-            
-            # Select a random song from the results
-            song = choice(results)
-            
+
+            # Filter out songs that have been used within retention period
+            available_songs = []
+            skipped_count = 0
+            for song in results:
+                song_src = song.get('sources', {}).get('src')
+                if song_src and not is_song_in_history(song_history, song_src):
+                    available_songs.append(song)
+                elif song_src:
+                    skipped_count += 1
+
+            if skipped_count > 0:
+                message_processor(
+                    f"Skipped {skipped_count} previously used songs, {len(available_songs)} available",
+                    "info"
+                )
+
+            if not available_songs:
+                message_processor(
+                    f"All {len(results)} songs on this page have been used recently. Trying another page...",
+                    "warning"
+                )
+                continue  # Try another attempt (which will select a different page)
+
+            # Select a random song from available (unused) songs
+            song = choice(available_songs)
+
             # Extract song information
             song_src = song.get('sources', {}).get('src')
             song_duration = song.get('duration', 0)  # Duration in seconds
             song_name = song.get('name', 'Unknown Song')
-            
+
             if not song_src:
                 message_processor("Song source URL not found.", "error")
                 continue
             
-            message_processor(f"Downloading: {song_name[:50]}... ({song_duration}s)", "download")
+            # Extract unique ID from URL for unique filenames
+            # URL format: https://cdn.pixabay.com/audio/2025/07/29/audio_2a1b68d9d9.mp3
+            url_filename = os.path.basename(song_src).replace('.mp3', '')  # e.g., "audio_2a1b68d9d9"
+
+            message_processor(f"Downloading: {url_filename} ({song_duration}s)", "download")
             message_processor(f"URL: {song_src}", "info")
-            
+
             # Download the audio file
             sleep(10)  # 10 second delay before downloading
             r = session.get(song_src)
             r.raise_for_status()
-            
-            # Clean filename for saving
-            safe_name = re.sub(r'[^\w\s-]', '', song_name)[:50]
-            audio_name = f"{safe_name}.mp3"
+
+            # Use URL filename for unique naming (avoids duplicate "No Copyright Music" names)
+            audio_name = f"{url_filename}.mp3"
             full_audio_path = os.path.join(AUDIO_FOLDER, audio_name)
             
             with open(full_audio_path, 'wb') as f:
@@ -1371,13 +1669,14 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
                     # If we can read the duration, the file is likely usable
                     actual_duration = audio_clip.duration
                 message_processor(f"Audio file verified. Duration: {actual_duration:.2f} seconds")
-                return full_audio_path, actual_duration * 1000  # Return duration in milliseconds
+                # Return path, duration in ms, and source URL for history tracking
+                return full_audio_path, actual_duration * 1000, song_src
             except Exception as e:
                 message_processor(f"Error verifying audio file: {e}", "error")
                 os.remove(full_audio_path)  # Remove the unusable file
                 message_processor(f"Removed unusable file: {audio_name}")
                 continue  # Try downloading again
-        
+
         except requests.HTTPError as e:
             if e.response.status_code == 403:
                 message_processor(f"Access forbidden (403). Pixabay may be rate limiting. Retrying...", "warning")
@@ -1387,9 +1686,9 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None)
             message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
         except (KeyError, ValueError) as e:
             message_processor(f"Error parsing response data: {e}", "error")
-    
+
     message_processor(f"Failed to download a usable audio file after {max_attempts} attempts.", "error")
-    return None, None
+    return None, None, None
 
 def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> list:
     """
@@ -1399,6 +1698,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
     - Pre-flight checks for SOCKS proxy and Pixabay connectivity
     - Automatic caching of successfully downloaded songs
     - Fallback to cached audio if Pixabay fails
+    - Song history tracking to prevent reuse within 180 days
     - Better error reporting with emojis
 
     Args:
@@ -1411,7 +1711,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
         list: List of tuples, each containing the path to a downloaded audio file and its duration in seconds.
               Returns None if unsuccessful in downloading sufficient audio and cache is empty.
     """
-    from .timelapse_config import AUDIO_CACHE_FOLDER, AUDIO_CACHE_MAX_FILES
+    from .timelapse_config import AUDIO_CACHE_FOLDER, AUDIO_CACHE_MAX_FILES, SONG_HISTORY_FILE
 
     songs = []
     total_duration = 0  # total duration in seconds
@@ -1422,6 +1722,14 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
     # Get cache settings from config
     cache_folder = config.get('files_and_folders', {}).get('AUDIO_CACHE_FOLDER', AUDIO_CACHE_FOLDER) if config else AUDIO_CACHE_FOLDER
     max_cache_files = config.get('music', {}).get('cache_max_files', AUDIO_CACHE_MAX_FILES) if config else AUDIO_CACHE_MAX_FILES
+
+    # Get song history file path (lives in project folder alongside other data files)
+    project_base = config.get('files_and_folders', {}).get('PROJECT_BASE', '') if config else ''
+    history_filename = config.get('files_and_folders', {}).get('SONG_HISTORY_FILE', SONG_HISTORY_FILE) if config else SONG_HISTORY_FILE
+    history_file = os.path.join(project_base, history_filename) if project_base else history_filename
+
+    # Load song history (auto-cleans entries older than 180 days)
+    song_history = load_song_history(history_file)
 
     message_processor(f"Attempting to download audio for {video_duration/1000:.2f} seconds of video")
 
@@ -1442,14 +1750,25 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
                 "warning"
             )
 
+    # Minimum number of songs to ensure variety and even distribution
+    MIN_SONGS = 2
+
     # Try downloading from Pixabay
-    while total_duration < video_duration / 1000 and attempts < max_attempts:
-        song_path, song_duration_ms = single_song_download(AUDIO_FOLDER, debug=debug, config=config)
-        if song_path and song_duration_ms:
+    # Continue until we have enough duration AND at least MIN_SONGS
+    while (total_duration < video_duration / 1000 or len(songs) < MIN_SONGS) and attempts < max_attempts:
+        song_path, song_duration_ms, song_src = single_song_download(
+            AUDIO_FOLDER, debug=debug, config=config, song_history=song_history
+        )
+        if song_path and song_duration_ms and song_src:
             song_duration_sec = song_duration_ms / 1000
             songs.append((song_path, song_duration_sec))
             total_duration += song_duration_sec
             pixabay_success = True
+
+            # Add to song history and save immediately
+            song_name = os.path.basename(song_path).replace('.mp3', '')
+            song_history = add_song_to_history(song_history, song_src, song_name, song_duration_sec)
+            save_song_history(song_history, history_file)
 
             # Add successful download to cache
             try:
@@ -1461,13 +1780,13 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
 
         attempts += 1
 
-    # Check if we got enough audio from Pixabay
-    if total_duration >= video_duration / 1000:
+    # Check if we got enough audio from Pixabay (need duration AND minimum songs)
+    if total_duration >= video_duration / 1000 and len(songs) >= MIN_SONGS:
         message_processor(f"Successfully downloaded {len(songs)} songs from Pixabay, total: {total_duration:.2f}s", "info")
         return songs
 
-    # Pixabay failed - try cached audio as fallback
-    if not pixabay_success or total_duration < video_duration / 1000:
+    # Pixabay failed or didn't get enough songs - try cached audio as fallback
+    if not pixabay_success or total_duration < video_duration / 1000 or len(songs) < MIN_SONGS:
         message_processor(
             f"Pixabay download failed. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s",
             "warning",
@@ -1475,11 +1794,14 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
         )
         message_processor("Attempting to use cached audio as fallback...", "info")
 
-        # Try to get multiple cached audio files
+        # Try to get multiple cached audio files, sorted by lowest usage count
+        # Require at least MIN_SONGS for even distribution
         cached_songs = get_cached_audio(
             cache_folder,
             target_duration_sec=video_duration / 1000,
-            multiple=True
+            multiple=True,
+            song_history=song_history,
+            min_files=MIN_SONGS
         )
 
         if cached_songs:
@@ -1489,6 +1811,20 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
                 "info",
                 ntfy=True
             )
+
+            # Update history for cached songs used (increment usage count)
+            for cached_path, cached_duration in cached_songs:
+                cached_filename = os.path.basename(cached_path)
+                # Try to find matching song in history to update count
+                for src_url, song_data in song_history.get("songs", {}).items():
+                    safe_name = re.sub(r'[^\w\s-]', '', song_data.get("name", ""))[:50]
+                    if safe_name and safe_name.lower() in cached_filename.lower():
+                        song_history = add_song_to_history(
+                            song_history, src_url, song_data.get("name", ""), cached_duration
+                        )
+                        break
+            save_song_history(song_history, history_file)
+
             return cached_songs
         else:
             message_processor(
@@ -1504,98 +1840,101 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
 def create_tts_intro(
     text: str,
     output_path: str | Path,
-    voice_gender: str = 'female',
     rate: int = 150,
     volume: float = 0.9
 ) -> tuple[str | None, float | None]:
     """
-    Creates a TTS (Text-to-Speech) audio file using Google Cloud TTS.
+    Creates a TTS (Text-to-Speech) audio file with random engine and voice.
+
+    Randomly selects between Edge TTS (free) and Google Cloud TTS (if configured).
+    Voice is randomly selected from a pool for variety across videos.
 
     Args:
         text (str): The text to convert to speech. Can include {date} placeholder.
         output_path (str or Path): Path where the TTS audio file will be saved.
-        voice_gender (str): 'female' or 'male' voice preference.
         rate (int): Speech rate (words per minute). Default 150.
         volume (float): Volume level (0.0 to 1.0). Default 0.9.
 
     Returns:
-        tuple: (audio_path, duration_ms) or (None, None) if failed
+        tuple: (audio_path, duration_seconds) or (None, None) if failed
     """
+    # Replace placeholders in text
+    today = datetime.now().strftime("%B %d, %Y")  # e.g., "December 19, 2025"
+    narration_text = text.replace('{date}', today)
+
+    message_processor(f"Generating TTS intro: \"{narration_text}\"", "info")
+
+    # Save to file
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Randomly choose between Edge and Google TTS, and randomize voices
+    import random
+    script_dir = Path(__file__).parent.parent
+    credentials_path = script_dir / 'tts.json'
+
+    # Voice pools for each engine
+    edge_voices = [
+        'en-US-AriaNeural',
+        'en-US-JennyNeural',
+        'en-US-GuyNeural',
+        'en-US-ChristopherNeural',
+        'en-GB-SoniaNeural',
+        'en-GB-RyanNeural',
+    ]
+    google_voices = [
+        'en-US-Neural2-A',  # Male
+        'en-US-Neural2-C',  # Female
+        'en-US-Neural2-D',  # Male
+        'en-US-Neural2-E',  # Female
+        'en-US-Neural2-F',  # Female
+        'en-US-Neural2-J',  # Male
+    ]
+
+    # Check if Google is available (tts.json exists)
+    google_available = credentials_path.exists()
+
+    # Pick engine randomly (Edge always available, Google only if configured)
+    if google_available:
+        use_google = random.choice([True, False])
+    else:
+        use_google = False
+
+    if use_google:
+        voice = random.choice(google_voices)
+        return _create_tts_google(narration_text, output_path, voice, rate)
+    else:
+        voice = random.choice(edge_voices)
+        return _create_tts_edge(narration_text, output_path, voice, rate)
+
+
+def _create_tts_edge(text: str, output_path: Path, voice: str, rate: int) -> tuple[str | None, float | None]:
+    """Create TTS using Microsoft Edge TTS (free, no API key)."""
     try:
-        import os
+        import asyncio
+        import edge_tts
 
-        # Check for tts.json credentials file in project root
-        script_dir = Path(__file__).parent.parent  # Go up from lib to project root
-        credentials_path = script_dir / 'tts.json'
+        # Convert rate (WPM) to edge-tts rate string
+        # edge-tts uses percentage: +0% is normal, +50% is faster, -50% is slower
+        rate_percent = int((rate - 150) / 150 * 100)
+        rate_str = f"{rate_percent:+d}%"
 
-        if not credentials_path.exists():
-            message_processor("TTS skipped: tts.json credentials file not found. See GOOGLE_TTS_SETUP.md", "info")
-            return None, None
+        message_processor(f"Using Edge TTS voice: {voice} (rate: {rate_str})", "info")
 
-        # Set credentials environment variable
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(credentials_path)
+        async def generate():
+            communicate = edge_tts.Communicate(text, voice, rate=rate_str)
+            await communicate.save(str(output_path))
 
-        from google.cloud import texttospeech
+        # Run the async function
+        asyncio.run(generate())
 
-        # Replace placeholders in text
-        today = datetime.now().strftime("%B %d, %Y")  # e.g., "November 19, 2025"
-        narration_text = text.replace('{date}', today)
-
-        message_processor(f"Generating TTS intro: \"{narration_text}\"", "info")
-
-        # Save to file
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Initialize the client
-        client = texttospeech.TextToSpeechClient()
-
-        # Set the text input
-        synthesis_input = texttospeech.SynthesisInput(text=narration_text)
-
-        # Select voice - using Neural2 voices for best quality
-        if voice_gender.lower() == 'female':
-            voice_name = 'en-US-Neural2-F'
-            ssml_gender = texttospeech.SsmlVoiceGender.FEMALE
-        else:
-            voice_name = 'en-US-Neural2-D'
-            ssml_gender = texttospeech.SsmlVoiceGender.MALE
-
-        voice = texttospeech.VoiceSelectionParams(
-            language_code='en-US',
-            name=voice_name,
-            ssml_gender=ssml_gender
-        )
-
-        # Configure audio output
-        # Speaking rate: 0.25 to 4.0, 1.0 is normal
-        # Convert WPM to Google's scale (150 WPM = 1.0)
-        speaking_rate = rate / 150.0
-
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=speaking_rate,
-            volume_gain_db=0.0  # Can adjust if needed
-        )
-
-        # Perform the text-to-speech request
-        response = client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
-
-        # Write the audio content to file
-        with open(output_path, 'wb') as out:
-            out.write(response.audio_content)
-
-        # Verify the file was created and get duration
+        # Verify and get duration
         if output_path.exists():
             try:
                 with AudioFileClip(str(output_path)) as audio_clip:
                     duration_sec = audio_clip.duration
                 message_processor(f"TTS intro created: {duration_sec:.1f}s", "info")
-                return str(output_path), duration_sec * 1000  # Return duration in milliseconds
+                return str(output_path), duration_sec * 1000
             except Exception as e:
                 message_processor(f"Error verifying TTS file: {e}", "error")
                 return None, None
@@ -1604,10 +1943,80 @@ def create_tts_intro(
             return None, None
 
     except ImportError:
-        message_processor("google-cloud-texttospeech not installed. Run: pip install google-cloud-texttospeech", "error")
+        message_processor("edge-tts not installed. Run: pip install edge-tts", "error")
         return None, None
     except Exception as e:
-        message_processor(f"Error creating TTS intro: {e}", "error")
+        message_processor(f"Error creating Edge TTS: {e}", "error")
+        return None, None
+
+
+def _create_tts_google(text: str, output_path: Path, voice: str, rate: int) -> tuple[str | None, float | None]:
+    """Create TTS using Google Cloud TTS (requires tts.json credentials)."""
+    try:
+        import os
+
+        # Check for tts.json credentials file in project root
+        script_dir = Path(__file__).parent.parent
+        credentials_path = script_dir / 'tts.json'
+
+        if not credentials_path.exists():
+            message_processor("Google TTS: tts.json not found. Falling back to Edge TTS.", "warning")
+            return _create_tts_edge(text, output_path, 'en-US-AriaNeural', rate)
+
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(credentials_path)
+
+        from google.cloud import texttospeech
+
+        message_processor(f"Using Google TTS voice: {voice}", "info")
+
+        client = texttospeech.TextToSpeechClient()
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        # Determine gender from voice name
+        if 'Female' in voice or voice.endswith(('C', 'E', 'F', 'G', 'H')):
+            ssml_gender = texttospeech.SsmlVoiceGender.FEMALE
+        else:
+            ssml_gender = texttospeech.SsmlVoiceGender.MALE
+
+        # Extract language code from voice name (e.g., 'en-US' from 'en-US-Neural2-F')
+        language_code = '-'.join(voice.split('-')[:2]) if '-' in voice else 'en-US'
+
+        voice_params = texttospeech.VoiceSelectionParams(
+            language_code=language_code,
+            name=voice,
+            ssml_gender=ssml_gender
+        )
+
+        speaking_rate = rate / 150.0
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=speaking_rate
+        )
+
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice_params,
+            audio_config=audio_config
+        )
+
+        with open(output_path, 'wb') as out:
+            out.write(response.audio_content)
+
+        if output_path.exists():
+            try:
+                with AudioFileClip(str(output_path)) as audio_clip:
+                    duration_sec = audio_clip.duration
+                message_processor(f"TTS intro created: {duration_sec:.1f}s", "info")
+                return str(output_path), duration_sec * 1000
+            except Exception as e:
+                message_processor(f"Error verifying TTS file: {e}", "error")
+                return None, None
+        else:
+            message_processor("TTS file was not created", "error")
+            return None, None
+
+    except Exception as e:
+        message_processor(f"Error creating Google TTS: {e}", "error")
         return None, None
 
 def combine_tts_with_music(
@@ -1731,6 +2140,107 @@ def combine_tts_with_music(
         if isinstance(music_audio, str):
             return AudioFileClip(music_audio)
         return music_audio
+
+def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fadeout_seconds=3):
+    """
+    Distributes songs evenly across the video duration with crossfades.
+
+    Each song gets an equal segment of the video. Songs are trimmed to fit their
+    allocated segment, with crossfades at transition points and a fade-out at the end.
+
+    Args:
+        songs (list of tuples): List of tuples (path, duration_sec) for each song.
+        video_duration_sec (float): Total video duration in seconds.
+        crossfade_seconds (int): Duration of crossfade between songs. Default 5.
+        fadeout_seconds (int): Duration of fade-out at the end. Default 3.
+
+    Returns:
+        AudioFileClip or None: The combined audio clip with even distribution.
+    """
+    from moviepy.editor import CompositeAudioClip
+
+    if not songs:
+        message_processor("No songs provided for distribution.", log_level="error")
+        return None
+
+    num_songs = len(songs)
+    segment_duration = video_duration_sec / num_songs
+
+    message_processor(
+        f"Distributing {num_songs} songs evenly across {video_duration_sec:.1f}s video "
+        f"({segment_duration:.1f}s per song, {crossfade_seconds}s crossfade)",
+        "info"
+    )
+
+    # Load and process all clips
+    processed_clips = []
+    for i, song in enumerate(songs):
+        if not isinstance(song, tuple) or len(song) == 0:
+            message_processor("Invalid song data format.", "error", ntfy=True)
+            return None
+
+        song_path = song[0]
+        try:
+            clip = AudioFileClip(song_path)
+            message_processor(
+                f"  Song {i+1}: {os.path.basename(song_path)[:30]}... ({clip.duration:.1f}s)",
+                "info"
+            )
+
+            # Calculate timing for this clip
+            # Each song starts at: i * (segment_duration - crossfade_seconds)
+            # This creates overlap during crossfade periods
+            if i == 0:
+                start_time = 0
+                # First clip: play for segment_duration, fade out at end
+                clip_duration = min(clip.duration, segment_duration)
+                clip = clip.subclip(0, clip_duration)
+                clip = clip.audio_fadeout(crossfade_seconds)
+            elif i == num_songs - 1:
+                # Last clip: starts at overlap point, plays to end of video
+                start_time = (segment_duration - crossfade_seconds) * i
+                remaining_duration = video_duration_sec - start_time
+                clip_duration = min(clip.duration, remaining_duration)
+                clip = clip.subclip(0, clip_duration)
+                clip = clip.audio_fadein(crossfade_seconds)
+                clip = clip.audio_fadeout(fadeout_seconds)
+            else:
+                # Middle clips: fade in and out
+                start_time = (segment_duration - crossfade_seconds) * i
+                clip_duration = min(clip.duration, segment_duration)
+                clip = clip.subclip(0, clip_duration)
+                clip = clip.audio_fadein(crossfade_seconds)
+                clip = clip.audio_fadeout(crossfade_seconds)
+
+            # Set when this clip starts playing
+            clip = clip.set_start(start_time)
+            processed_clips.append(clip)
+
+            message_processor(
+                f"    Placed at {start_time:.1f}s-{start_time + clip_duration:.1f}s",
+                "info"
+            )
+
+        except Exception as e:
+            message_processor(f"Error loading audio from {song_path}: {e}", "error", ntfy=True)
+            return None
+
+    if not processed_clips:
+        return None
+
+    # Combine all clips - CompositeAudioClip mixes overlapping audio
+    if len(processed_clips) == 1:
+        final_clip = processed_clips[0]
+    else:
+        final_clip = CompositeAudioClip(processed_clips)
+
+    # Trim to exact video duration
+    if final_clip.duration and final_clip.duration > video_duration_sec:
+        final_clip = final_clip.subclip(0, video_duration_sec)
+
+    message_processor(f"Audio distributed evenly. Final duration: {final_clip.duration:.1f}s", "info")
+    return final_clip
+
 
 def concatenate_songs(songs, crossfade_seconds=3):
     """
