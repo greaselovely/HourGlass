@@ -95,6 +95,7 @@ def import_dependencies(config_path=None):
     from lib.config_validator import ConfigValidator, validate_config_quick
     from lib.health_monitor import create_health_monitor
     from moviepy.editor import ImageSequenceClip, AudioFileClip
+    from moviepy.audio.fx.all import audio_loop
     from lib.timelapse_validator import validate_images as validate_images_fast
     from lib.memory_optimizer import memory_managed_operation, monitor_resource_usage
 
@@ -642,7 +643,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                 # Sync audio and video
                 if audio_clip.duration < video_clip.duration:
                     message_processor("Looping audio to match video length")
-                    audio_clip = audio_clip.loop(duration=video_clip.duration)
+                    audio_clip = audio_loop(audio_clip, duration=video_clip.duration)
                 else:
                     audio_clip = audio_clip.subclip(0, video_clip.duration)
 
