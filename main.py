@@ -41,7 +41,7 @@ def import_dependencies(config_path=None):
     global message_processor, load_config, config, validate_config_quick
     global create_timelapse_main_loop, ConfigValidator, create_health_monitor
     global validate_images_fast, memory_managed_operation, monitor_resource_usage
-    global ImageSequenceClip, AudioFileClip, CustomLogger, ImageDownloader
+    global ImageSequenceClip, AudioFileClip, audio_loop, CustomLogger, ImageDownloader
     global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
     global setup_logging
     
