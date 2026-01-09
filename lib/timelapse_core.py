@@ -1900,12 +1900,84 @@ def create_tts_intro(
     else:
         use_google = False
 
+    result = (None, None)
+
     if use_google:
         voice = random.choice(google_voices)
-        return _create_tts_google(narration_text, output_path, voice, rate)
+        result = _create_tts_google(narration_text, output_path, voice, rate)
+        if result[0] is None:
+            # Google failed, fall back to Edge with retries
+            message_processor("Google TTS failed, falling back to Edge TTS", "warning")
+            result = _create_tts_with_retry(
+                narration_text, output_path, edge_voices, rate, max_retries=3
+            )
     else:
-        voice = random.choice(edge_voices)
-        return _create_tts_edge(narration_text, output_path, voice, rate)
+        # Try Edge TTS with retries
+        result = _create_tts_with_retry(
+            narration_text, output_path, edge_voices, rate, max_retries=3
+        )
+        if result[0] is None and google_available:
+            # Edge failed, fall back to Google
+            message_processor("Edge TTS failed after retries, falling back to Google TTS", "warning")
+            voice = random.choice(google_voices)
+            result = _create_tts_google(narration_text, output_path, voice, rate)
+
+    # If all TTS attempts failed, send ntfy alert
+    if result[0] is None:
+        message_processor(
+            "TTS generation failed completely - no voice intro will be added",
+            "error",
+            ntfy=True
+        )
+
+    return result
+
+
+def _create_tts_with_retry(
+    text: str,
+    output_path: Path,
+    voices: list,
+    rate: int,
+    max_retries: int = 3,
+    retry_delay: float = 2.0
+) -> tuple[str | None, float | None]:
+    """
+    Attempts Edge TTS with retries, trying different voices on failure.
+
+    Args:
+        text: Text to synthesize
+        output_path: Where to save the audio
+        voices: List of voice names to try
+        rate: Speech rate (WPM)
+        max_retries: Maximum number of retry attempts
+        retry_delay: Seconds to wait between retries
+
+    Returns:
+        tuple: (audio_path, duration_ms) or (None, None) if all attempts fail
+    """
+    import time
+    import random
+
+    available_voices = voices.copy()
+    random.shuffle(available_voices)  # Randomize order for variety
+
+    for attempt in range(max_retries):
+        # Pick a different voice for each attempt if possible
+        voice = available_voices[attempt % len(available_voices)]
+
+        message_processor(f"TTS attempt {attempt + 1}/{max_retries} with voice: {voice}", "info")
+
+        result = _create_tts_edge(text, output_path, voice, rate)
+        if result[0] is not None:
+            return result
+
+        if attempt < max_retries - 1:
+            message_processor(f"TTS attempt failed, waiting {retry_delay}s before retry...", "warning")
+            time.sleep(retry_delay)
+            # Increase delay for subsequent retries (exponential backoff)
+            retry_delay = min(retry_delay * 1.5, 10.0)
+
+    return (None, None)
 
 
 def _create_tts_edge(text: str, output_path: Path, voice: str, rate: int) -> tuple[str | None, float | None]:
@@ -2200,8 +2272,19 @@ def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fade
                 # Last clip: starts at overlap point, plays to end of video
                 start_time = (segment_duration - crossfade_seconds) * i
                 remaining_duration = video_duration_sec - start_time
-                clip_duration = min(clip.duration, remaining_duration)
-                clip = clip.subclip(0, clip_duration)
+
+                # If the song is shorter than remaining duration, loop it to fill the gap
+                if clip.duration < remaining_duration:
+                    message_processor(
+                        f"    Last song ({clip.duration:.1f}s) shorter than remaining time ({remaining_duration:.1f}s). Looping to fill.",
+                        "info"
+                    )
+                    clip = clip.loop(duration=remaining_duration)
+                    clip_duration = remaining_duration
+                else:
+                    clip_duration = remaining_duration
+                    clip = clip.subclip(0, clip_duration)
+
                 clip = clip.audio_fadein(crossfade_seconds)
                 clip = clip.audio_fadeout(fadeout_seconds)
             else:
