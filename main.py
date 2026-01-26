@@ -7,6 +7,7 @@ import argparse
 import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
+from time import sleep
 # Don't import timelapse_config yet - it may create default config
 # We'll import it after checking if project config exists
 
