@@ -16,3 +16,7 @@ Requests
 wurlitzer==3.0.3
 edge-tts
 Requests[socks]
+
+# Testing
+pytest>=8.0.0
+pytest-mock>=3.12.0
