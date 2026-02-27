@@ -316,7 +316,7 @@ validate_video() {
   local dur_int=${duration%.*}
   local dur_min=$((dur_int / 60))
   local dur_sec=$((dur_int % 60))
-  log "ffprobe OK: duration ${dur_min}m${dur_sec}s"
+  log "ffprobe OK: duration ${dur_min}m${dur_sec}s" >&2
   echo "${dur_min}m${dur_sec}s"
   return 0
 }
