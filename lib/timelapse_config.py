@@ -401,6 +401,8 @@ def load_config(config_path=None):
         # Clean up deprecated fields
         config = cleanup_deprecated_fields(config)
 
+        config_updates = []
+
         config = update_config(config)
 
         # Always sync user agents from defaults so they don't go stale
@@ -408,11 +410,15 @@ def load_config(config_path=None):
         if config.get('user_agents') != default_config['user_agents']:
             logging.info("Updating user_agents to current versions")
             config['user_agents'] = default_config['user_agents']
+            config_updates.append("user_agents updated to current browser versions")
 
         # Write updated config back to file (with ~ paths for portability)
         with open(CONFIG_PATH, 'w') as file:
             json.dump(config, file, indent=2)
         logging.info("Updated configuration written to file")
+
+        # Store config update reasons for ntfy notification after init
+        config['_config_updates'] = config_updates
 
         # Expand ~ to actual home directory for use in the application
         config = expand_config_paths(config)

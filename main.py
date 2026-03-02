@@ -121,6 +121,12 @@ def import_dependencies(config_path=None):
         if not name.startswith('_') and name not in preserve_vars:
             globals()[name] = getattr(timelapse_config, name)
     
+    # Notify if config was auto-updated during load
+    config_updates = loaded_config.pop('_config_updates', [])
+    if config_updates:
+        update_msg = "Config updated: " + "; ".join(config_updates)
+        message_processor(update_msg, "info", ntfy=True)
+
     return loaded_config
 
 def test_network_connectivity():
