@@ -58,7 +58,6 @@ class HealthMonitor:
             'memory_percent': 85.0,          # Warn if more than 85% used
             'cpu_percent': 80.0,            # Warn if more than 80% used over time
             'error_rate_percent': 10.0,      # Warn if error rate > 10%
-            'capture_rate_min': 0.5,        # Warn if < 2 images per minute
         }
         
         # Health history
@@ -432,55 +431,22 @@ class HealthMonitor:
         return metrics
     
     def _check_capture_performance(self) -> List[HealthMetric]:
-        """Check image capture performance."""
+        """Check image capture performance (error rate only)."""
         metrics = []
-        
+
         # Skip capture performance checks during sleep mode
         if self.is_sleeping:
             return metrics
-        
+
         try:
             uptime_hours = self._get_uptime_hours()
-            
-            # Don't check capture performance if we've been running for less than 1 hour
-            if uptime_hours < 1.0:  # Less than 1 hour
-                metrics.append(HealthMetric(
-                    name='capture_rate',
-                    value=0,
-                    threshold=self.thresholds['capture_rate_min'] * 60,
-                    status='healthy',
-                    message=f"Warmup period - capture rate check skipped (uptime: {uptime_hours*60:.0f} minutes)",
-                    timestamp=datetime.now(),
-                    unit='images/hour'
-                ))
-                return metrics
-            
+
             if uptime_hours > 0:
-                images_per_hour = self.performance_stats['images_captured'] / uptime_hours
                 error_rate = 0
-                
                 total_attempts = self.performance_stats['images_captured'] + self.performance_stats['errors_encountered']
                 if total_attempts > 0:
                     error_rate = (self.performance_stats['errors_encountered'] / total_attempts) * 100
-                
-                # Capture rate check (only after startup period)
-                if images_per_hour < self.thresholds['capture_rate_min'] * 60:  # Convert to per hour
-                    status = 'warning'
-                    message = f"Low capture rate: {images_per_hour:.1f} images/hour"
-                else:
-                    status = 'healthy'
-                    message = f"Capture rate normal: {images_per_hour:.1f} images/hour"
-                
-                metrics.append(HealthMetric(
-                    name='capture_rate',
-                    value=images_per_hour,
-                    threshold=self.thresholds['capture_rate_min'] * 60,
-                    status=status,
-                    message=message,
-                    timestamp=datetime.now(),
-                    unit='images/hour'
-                ))
-                
+
                 # Error rate check
                 if error_rate > self.thresholds['error_rate_percent']:
                     status = 'warning'
@@ -488,7 +454,7 @@ class HealthMonitor:
                 else:
                     status = 'healthy'
                     message = f"Error rate normal: {error_rate:.1f}%"
-                
+
                 metrics.append(HealthMetric(
                     name='error_rate',
                     value=error_rate,
@@ -498,7 +464,7 @@ class HealthMonitor:
                     timestamp=datetime.now(),
                     unit='%'
                 ))
-            
+
         except Exception as e:
             metrics.append(HealthMetric(
                 name='capture_performance',
@@ -508,7 +474,7 @@ class HealthMonitor:
                 message=f"Failed to check capture performance: {e}",
                 timestamp=datetime.now()
             ))
-        
+
         return metrics
     
     def _process_health_report(self, health_report):
