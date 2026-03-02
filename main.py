@@ -1069,7 +1069,7 @@ def main():
         return
 
     # ===== IMAGE CAPTURE MODE =====
-    message_processor("Starting image capture mode", "info", ntfy=True)
+    # message_processor("Starting image capture mode", "info", ntfy=True)
     
     # Clean up previous validation
     remove_valid_images_json(run_valid_images_file)
