@@ -442,14 +442,14 @@ class HealthMonitor:
         try:
             uptime_hours = self._get_uptime_hours()
             
-            # Don't check capture performance if we've been running for less than 30 minutes
-            if uptime_hours < 0.5:  # Less than 30 minutes
+            # Don't check capture performance if we've been running for less than 1 hour
+            if uptime_hours < 1.0:  # Less than 1 hour
                 metrics.append(HealthMetric(
                     name='capture_rate',
                     value=0,
                     threshold=self.thresholds['capture_rate_min'] * 60,
                     status='healthy',
-                    message=f"Startup period - capture rate check skipped (uptime: {uptime_hours*60:.0f} minutes)",
+                    message=f"Warmup period - capture rate check skipped (uptime: {uptime_hours*60:.0f} minutes)",
                     timestamp=datetime.now(),
                     unit='images/hour'
                 ))
