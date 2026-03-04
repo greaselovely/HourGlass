@@ -214,8 +214,8 @@ calculate_sleep_seconds() {
   end_hour=$(echo "$end_time" | cut -d: -f1)
   end_min=$(echo "$end_time" | cut -d: -f2)
 
-  # Target time = End time + buffer
-  local target_min=$((end_hour * 60 + end_min + SAVE_BUFFER_MIN))
+  # Target time = End time + buffer (10# forces base-10, avoiding octal interpretation of leading zeros)
+  local target_min=$((10#$end_hour * 60 + 10#$end_min + SAVE_BUFFER_MIN))
   local target_hour=$((target_min / 60))
   target_min=$((target_min % 60))
 
