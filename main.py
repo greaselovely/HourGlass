@@ -1104,17 +1104,24 @@ def main():
                     health_monitor.stop_monitoring()
                 sys.exit(0)
             
-            # Sleep until sunrise if needed
+            # Always post schedule so v.sh can read End time
             if now < sunrise_datetime:
                 sleep_timer = int((sunrise_datetime - now).total_seconds())
-                hours, minutes = divmod(sleep_timer // 60, 60)
+                sleep_hours, sleep_minutes = divmod(sleep_timer // 60, 60)
+                start_label = sunrise_time.strftime('%H:%M')
+            else:
+                sleep_timer = 0
+                sleep_hours, sleep_minutes = 0, 0
+                start_label = now.strftime('%H:%M')
 
-                message_processor(
-                    f"Sleep:\t{hours:02d}:{minutes:02d}\nStart:\t{sunrise_time.strftime('%H:%M')}\nEnd:\t{sunset_datetime.strftime('%H:%M')}",
-                    "none",
-                    ntfy=True,
-                    print_me=True
-                )
+            message_processor(
+                f"Sleep:\t{sleep_hours:02d}:{sleep_minutes:02d}\nStart:\t{start_label}\nEnd:\t{sunset_datetime.strftime('%H:%M')}",
+                "none",
+                ntfy=True,
+                print_me=True
+            )
+
+            if sleep_timer > 0:
                 if health_monitor:
                     health_monitor.set_sleep_status(True)
                 sleep(sleep_timer)
