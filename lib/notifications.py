@@ -7,6 +7,7 @@ exponential backoff are applied globally across all services.
 
 import json
 import logging
+import os
 import requests
 from time import sleep, monotonic
 from urllib.parse import urljoin
@@ -300,19 +301,53 @@ def _print_status_api(status_api):
         print(f"\n  Status API:  (not configured — no Tailscale IP)")
 
 
-def _detect_tailscale_ip():
-    """Try to detect the local Tailscale IPv4 address."""
+def _find_tailscale_cli():
+    """Find the tailscale CLI binary."""
+    import shutil
+    # Linux / brew / PATH
+    path = shutil.which("tailscale")
+    if path:
+        return path
+    # macOS app bundle
+    macos_path = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    if os.path.isfile(macos_path):
+        return macos_path
+    return None
+
+
+def _get_tailscale_peers():
+    """Get list of Tailscale peers with IPs and hostnames."""
     import subprocess
+    peers = []
+    cli = _find_tailscale_cli()
+    if not cli:
+        return peers
     try:
         result = subprocess.run(
-            ["tailscale", "ip", "-4"],
+            [cli, "status", "--json"],
             capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
-            return result.stdout.strip().split("\n")[0]
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+            data = json.loads(result.stdout)
+            # Add self
+            self_node = data.get("Self", {})
+            self_ips = self_node.get("TailscaleIPs", [])
+            self_name = self_node.get("HostName", "this machine")
+            if self_ips:
+                ipv4 = next((ip for ip in self_ips if "." in ip), self_ips[0])
+                peers.append((self_name + " (this machine)", ipv4))
+            # Add peers
+            for _id, peer in data.get("Peer", {}).items():
+                if not peer.get("Online", False):
+                    continue
+                ips = peer.get("TailscaleIPs", [])
+                name = peer.get("HostName", "unknown")
+                if ips:
+                    ipv4 = next((ip for ip in ips if "." in ip), ips[0])
+                    peers.append((name, ipv4))
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
         pass
-    return ""
+    return peers
 
 
 def _configure_status_api(status_api):
@@ -321,26 +356,40 @@ def _configure_status_api(status_api):
     print("The status API runs on your server and is queried by v.sh over Tailscale.")
 
     current_ip = status_api.get("tailscale_ip", "")
-    detected_ip = _detect_tailscale_ip()
+    peers = _get_tailscale_peers()
 
-    if detected_ip and not current_ip:
-        print(f"Detected local Tailscale IP: {detected_ip}")
-        default_ip = detected_ip
-    elif detected_ip and current_ip and detected_ip != current_ip:
-        print(f"Detected local Tailscale IP: {detected_ip} (configured: {current_ip})")
-        default_ip = current_ip
-    else:
-        default_ip = current_ip
+    if peers:
+        print("\nTailscale devices found:")
+        for i, (name, ip) in enumerate(peers, 1):
+            marker = " *" if ip == current_ip else ""
+            print(f"  {i}. {name:30s} {ip}{marker}")
+        print(f"  {len(peers) + 1}. Enter manually")
 
-    if default_ip:
-        ip = input(f"Server Tailscale IP [{default_ip}]: ").strip()
-        status_api["tailscale_ip"] = ip if ip else default_ip
+        choice = input(f"\nSelect server (1-{len(peers) + 1})"
+                       + (f" [{current_ip}]: " if current_ip else ": ")).strip()
+
+        if not choice and current_ip:
+            pass  # keep current
+        elif choice.isdigit() and 1 <= int(choice) <= len(peers):
+            status_api["tailscale_ip"] = peers[int(choice) - 1][1]
+        elif choice.isdigit() and int(choice) == len(peers) + 1:
+            ip = input("Server Tailscale IP: ").strip()
+            if ip:
+                status_api["tailscale_ip"] = ip
+        elif choice:
+            # Treat raw input as an IP
+            status_api["tailscale_ip"] = choice
     else:
-        ip = input("Server Tailscale IP: ").strip()
-        if ip:
-            status_api["tailscale_ip"] = ip
+        if current_ip:
+            ip = input(f"Server Tailscale IP [{current_ip}]: ").strip()
+            status_api["tailscale_ip"] = ip if ip else current_ip
         else:
-            print("No IP set — status API will not be used by v.sh.")
+            print("Tailscale not found or not running.")
+            ip = input("Server Tailscale IP (leave empty to skip): ").strip()
+            if ip:
+                status_api["tailscale_ip"] = ip
+            else:
+                print("No IP set — status API will not be used by v.sh.")
 
     current_port = status_api.get("port", 8321)
     port_str = input(f"Status API port [{current_port}]: ").strip()

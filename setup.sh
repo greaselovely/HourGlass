@@ -153,7 +153,7 @@ fi
 # Verify other key dependencies
 echo -e "[i]\tVerifying additional dependencies..."
 
-if python -c "import requests, beautifulsoup4, moviepy, numpy" 2>/dev/null; then
+if python -c "import requests, bs4, moviepy, numpy" 2>/dev/null; then
     echo -e "[✓]\tCore Python packages verified"
 else
     echo -e "[!]\tSome core Python packages failed verification"
