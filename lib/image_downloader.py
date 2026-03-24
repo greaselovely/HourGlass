@@ -245,7 +245,7 @@ class ImageDownloader:
                             f"Alert: Hash repeated {self.repeated_hash_count} times.",
                             "alert",
                             print_me=True,
-                            ntfy=True
+                            notify=True
                         )
 
                     message_processor(

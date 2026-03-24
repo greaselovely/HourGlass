@@ -185,7 +185,7 @@ def create_time_lapse(valid_files, video_path, fps, audio_input=None, crossfade_
     except Exception as e:
         error_message = f"Error in create_time_lapse: {str(e)}"
         logging.error(error_message)
-        message_processor(error_message, "error", ntfy=True)
+        message_processor(error_message, "error", notify=True)
         raise  # Re-raise the exception to be caught by the calling function
 
     finally:
@@ -200,4 +200,4 @@ def create_time_lapse(valid_files, video_path, fps, audio_input=None, crossfade_
         except Exception as close_error:
             message_processor(f"Error while closing clips: {str(close_error)}", "error")
 
-    message_processor(f"Time Lapse Saved: {video_path}", ntfy=False)
+    message_processor(f"Time Lapse Saved: {video_path}", notify=False)

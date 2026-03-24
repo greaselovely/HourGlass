@@ -341,20 +341,36 @@ def create_initial_config(existing_config=None, project_name=None):
         }
     
     # Alert settings
-    print("\n[8/8] Alert Configuration (optional)")
+    print("\n[8/8] Notification Configuration (optional)")
     print("-" * 40)
-    
-    use_alerts = input("Enable ntfy.sh alerts? (y/n) [n]: ").strip().lower() == 'y'
-    
-    if use_alerts:
-        config["alerts"]["enabled"] = True
-        config["alerts"]["ntfy"] = input("ntfy.sh topic name: ").strip()
-        config["ntfy"] = "http://ntfy.sh/"
+    print("HourGlass supports ntfy.sh and Pushover notifications.")
+    print("You can configure more services later with: python main.py <project> --notifications\n")
+
+    services = config.get("alerts", {}).get("services", {
+        "ntfy": {"enabled": False, "topic": ""},
+        "pushover": {"enabled": False, "api_token": "", "user_key": ""}
+    })
+
+    # ntfy
+    use_ntfy = input("Enable ntfy.sh alerts? (y/n) [n]: ").strip().lower() == 'y'
+    if use_ntfy:
+        ntfy_topic = input("ntfy.sh topic name: ").strip()
+        services["ntfy"] = {"enabled": True, "topic": ntfy_topic}
     else:
-        config["alerts"]["enabled"] = False
-        config["alerts"]["ntfy"] = ""
-        config["ntfy"] = "http://ntfy.sh/"
-    
+        services.setdefault("ntfy", {"enabled": False, "topic": ""})
+
+    # Pushover
+    use_pushover = input("Enable Pushover alerts? (y/n) [n]: ").strip().lower() == 'y'
+    if use_pushover:
+        po_token = input("Pushover API token: ").strip()
+        po_user = input("Pushover user key: ").strip()
+        services["pushover"] = {"enabled": True, "api_token": po_token, "user_key": po_user}
+    else:
+        services.setdefault("pushover", {"enabled": False, "api_token": "", "user_key": ""})
+
+    config["alerts"]["enabled"] = use_ntfy or use_pushover
+    config["alerts"]["services"] = services
+    config["ntfy"] = "http://ntfy.sh/"
     config["alerts"]["repeated_hash_threshold"] = 10
     config["alerts"]["escalation_points"] = [10, 50, 100, 500]
     config["alerts"]["repeated_hash_count"] = 0

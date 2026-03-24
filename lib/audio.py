@@ -351,7 +351,7 @@ def get_cached_audio(cache_folder: str | Path, min_duration_sec: float | None = 
         cached_files = list(cache_folder.glob('*.mp3'))
 
         if not cached_files:
-            message_processor("Audio cache is empty", "warning", ntfy=True)
+            message_processor("Audio cache is empty", "warning", notify=True)
             return [] if multiple else (None, None)
 
         # Get durations for all valid files
@@ -891,7 +891,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
         message_processor(
             f"Pixabay download failed. Got {total_duration:.2f}s, needed {video_duration/1000:.2f}s",
             "warning",
-            ntfy=True
+            notify=True
         )
         message_processor("Attempting to use cached audio as fallback...", "info")
 
@@ -910,7 +910,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
             message_processor(
                 f"Using {len(cached_songs)} cached audio file(s) ({total_cached_duration:.1f}s total)",
                 "info",
-                ntfy=True
+                notify=True
             )
 
             # Update history for cached songs used (increment usage count)
@@ -931,7 +931,7 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
             message_processor(
                 f"No suitable cached audio found. Cache has {cache_stats['count']} files",
                 "error",
-                ntfy=True
+                notify=True
             )
             return None
 
@@ -1033,7 +1033,7 @@ def create_tts_intro(
         message_processor(
             "TTS generation failed completely - no voice intro will be added",
             "error",
-            ntfy=True
+            notify=True
         )
 
     return result
@@ -1356,7 +1356,7 @@ def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fade
     processed_clips = []
     for i, song in enumerate(songs):
         if not isinstance(song, tuple) or len(song) == 0:
-            message_processor("Invalid song data format.", "error", ntfy=True)
+            message_processor("Invalid song data format.", "error", notify=True)
             return None
 
         song_path = song[0]
@@ -1413,7 +1413,7 @@ def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fade
             )
 
         except Exception as e:
-            message_processor(f"Error loading audio from {song_path}: {e}", "error", ntfy=True)
+            message_processor(f"Error loading audio from {song_path}: {e}", "error", notify=True)
             return None
 
     if not processed_clips:
@@ -1458,11 +1458,11 @@ def concatenate_songs(songs, crossfade_seconds=3):
                 clip = AudioFileClip(song_path)
                 clips.append(clip)
             except Exception as e:
-                message_processor(f"Error loading audio from {song_path}: {e}", "error", ntfy=True)
+                message_processor(f"Error loading audio from {song_path}: {e}", "error", notify=True)
                 sys.exit(1)
 
         else:
-            message_processor("Invalid song data format.", "error", ntfy=True)
+            message_processor("Invalid song data format.", "error", notify=True)
 
     if clips:
         # Manually handle crossfade

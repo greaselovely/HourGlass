@@ -516,7 +516,7 @@ class HealthMonitor:
             message_processor(
                 f"Health Alert [{severity.upper()}]: {metric['message']}", 
                 "error" if severity == 'critical' else "warning",
-                ntfy=True
+                notify=True
             )
             self.last_alerts[alert_key] = now
             

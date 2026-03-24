@@ -85,6 +85,31 @@ def _cleanup_old_logs(log_directory, days_to_keep=14):
     except Exception:
         pass  # Don't let cleanup errors break logging setup
 
+def _migrate_alerts_to_services(config):
+    """
+    Migrate old flat alerts.ntfy (string topic) to new alerts.services structure.
+    Preserves existing services config if already migrated.
+    """
+    alerts = config.get('alerts', {})
+    if 'services' in alerts:
+        return config  # already migrated
+
+    old_topic = alerts.pop('ntfy', '')
+    alerts['services'] = {
+        'ntfy': {
+            'enabled': bool(old_topic),
+            'topic': old_topic
+        },
+        'pushover': {
+            'enabled': False,
+            'api_token': '',
+            'user_key': ''
+        }
+    }
+    config['alerts'] = alerts
+    logging.info(f"Migrated alerts config to services structure (ntfy topic: {old_topic!r})")
+    return config
+
 # Set up logging with default values before loading config
 DEFAULT_CONFIG = {
     "files_and_folders": {
@@ -268,7 +293,17 @@ def load_config(config_path=None):
             },
             "alerts": {
                 "enabled": False,
-                "ntfy": "",
+                "services": {
+                    "ntfy": {
+                        "enabled": False,
+                        "topic": ""
+                    },
+                    "pushover": {
+                        "enabled": False,
+                        "api_token": "",
+                        "user_key": ""
+                    }
+                },
                 "repeated_hash_threshold": 10,
                 "escalation_points": [10, 50, 100, 500],
                 "repeated_hash_count": 0
@@ -397,6 +432,9 @@ def load_config(config_path=None):
 
         # Normalize paths to use ~ (for portability)
         config = normalize_paths(config)
+
+        # Migrate old flat alerts.ntfy → alerts.services.ntfy
+        config = _migrate_alerts_to_services(config)
 
         # Clean up deprecated fields
         config = cleanup_deprecated_fields(config)

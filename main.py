@@ -89,10 +89,16 @@ def import_dependencies(config_path=None):
         VIDEO_FILENAME_FORMAT = config.get('video', {}).get('VIDEO_FILENAME_FORMAT', f'{PROJECT_NAME}.%m%d%Y.mp4')
         
         # Extract alert settings
-        NTFY_TOPIC = config.get('alerts', {}).get('ntfy', '')
-        NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
         ALERTS_ENABLED = config.get('alerts', {}).get('enabled', False)
-    
+        # Legacy globals kept for backward compat but notifications now go through NotificationManager
+        ntfy_svc = config.get('alerts', {}).get('services', {}).get('ntfy', {})
+        NTFY_TOPIC = ntfy_svc.get('topic', '')
+        NTFY_URL = config.get('ntfy', 'http://ntfy.sh/')
+
+    # Initialise unified notification manager
+    from lib.notifications import init_notifications
+    init_notifications(config)
+
     from lib.config_validator import ConfigValidator, validate_config_quick
     from lib.health_monitor import create_health_monitor
     from moviepy.editor import ImageSequenceClip, AudioFileClip
@@ -125,7 +131,7 @@ def import_dependencies(config_path=None):
     config_updates = loaded_config.pop('_config_updates', [])
     if config_updates:
         update_msg = "Config updated: " + "; ".join(config_updates)
-        message_processor(update_msg, "info", ntfy=True)
+        message_processor(update_msg, "info", notify=True)
 
     return loaded_config
 
@@ -520,7 +526,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             )
 
         if not valid_files:
-            message_processor("No valid images found. Aborting video creation.", "error", ntfy=True)
+            message_processor("No valid images found. Aborting video creation.", "error", notify=True)
             if 'health_monitor' in globals():
                 health_monitor.update_performance_stats('errors_encountered')
             return
@@ -617,10 +623,10 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                             tts_intro_path = tts_result
                             message_processor("TTS intro will be added to video", "info")
             else:
-                message_processor("Audio download failed. Proceeding without audio.", "warning", ntfy=True)
+                message_processor("Audio download failed. Proceeding without audio.", "warning", notify=True)
                 audio_source = "NONE"
         except Exception as e:
-            message_processor(f"Audio download error: {e}. Proceeding without audio.", "warning", ntfy=True)
+            message_processor(f"Audio download error: {e}. Proceeding without audio.", "warning", notify=True)
             final_song = None
             audio_source = "NONE"
         
@@ -689,10 +695,10 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
 
                 os.rename(video_path, new_path)
                 video_path = new_path  # Update video_path for subsequent logging
-                message_processor(f"Video renamed to indicate NO AUDIO: {new_name}", "warning", ntfy=True)
+                message_processor(f"Video renamed to indicate NO AUDIO: {new_name}", "warning", notify=True)
 
         except Exception as e:
-            message_processor(f"Error in video creation: {e}", "error", ntfy=True)
+            message_processor(f"Error in video creation: {e}", "error", notify=True)
             video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
 
         # Check if video was created successfully
@@ -700,7 +706,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             video_size_mb = os.path.getsize(video_path) / (1024 * 1024)
             message_processor(
                 f"{video_path.split('/')[-1]} saved successfully ({video_size_mb:.1f}MB)", 
-                ntfy=True, 
+                notify=True, 
                 print_me=True
             )
             
@@ -720,17 +726,17 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                     cleanup(run_images_folder)
                     cleanup(run_audio_folder)
                 
-                message_processor("Main sequence completed successfully", ntfy=True)
+                message_processor("Main sequence completed successfully", notify=True)
                 
             except Exception as cleanup_error:
                 cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
                 logging.error(cleanup_error_message)
-                message_processor(cleanup_error_message, "error", ntfy=True)
+                message_processor(cleanup_error_message, "error", notify=True)
                 if 'health_monitor' in globals():
                     health_monitor.update_performance_stats('errors_encountered')
         else:
             error_msg = f"Failed to create video: {video_path.split('/')[-1]}"
-            message_processor(error_msg, "error", ntfy=True)
+            message_processor(error_msg, "error", notify=True)
             if 'health_monitor' in globals():
                 health_monitor.update_performance_stats('errors_encountered')
 
@@ -741,7 +747,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
     except Exception as e:
         error_message = f"Error in main_sequence: {str(e)}"
         logging.error(error_message)
-        message_processor(error_message, "error", ntfy=True)
+        message_processor(error_message, "error", notify=True)
         if 'health_monitor' in globals():
             health_monitor.update_performance_stats('errors_encountered')
   
@@ -784,8 +790,24 @@ def main():
                        help="Use cached audio instead of downloading (for testing)")
     parser.add_argument("--test-compile", action="store_true",
                        help="Generate test images and compile video (tests full pipeline without image downloads)")
+    parser.add_argument("--notifications", action="store_true",
+                       help="Interactive wizard to configure notification services (ntfy, Pushover)")
     args = parser.parse_args()
     
+    # ===== STANDALONE MODES (run before full app init) =====
+    # Handle --notifications wizard early — skip all other setup
+    if args.notifications:
+        if args.project is None:
+            print("Usage: python main.py <project> --notifications")
+            sys.exit(1)
+        config_path = f"configs/{args.project}.json"
+        if not os.path.exists(config_path):
+            print(f"Config not found: {config_path}")
+            sys.exit(1)
+        from lib.notifications import notifications_wizard
+        notifications_wizard(config_path)
+        sys.exit(0)
+
     # ===== AUTO-SETUP WHEN NO PROJECT OR CONFIG MISSING =====
     # If no project specified, run setup
     if args.project is None:
@@ -942,7 +964,7 @@ def main():
 
     # Handle test-compile mode: generate test images and compile video
     if args.test_compile:
-        message_processor(f"Test compile mode for project: {args.project}", "info", ntfy=True)
+        message_processor(f"Test compile mode for project: {args.project}", "info", notify=True)
 
         try:
             # Import image_dup functions
@@ -987,10 +1009,10 @@ def main():
                 args.cache
             )
 
-            message_processor("Test compile completed successfully!", "info", ntfy=True)
+            message_processor("Test compile completed successfully!", "info", notify=True)
 
         except Exception as e:
-            message_processor(f"Test compile failed: {e}", "error", ntfy=True)
+            message_processor(f"Test compile failed: {e}", "error", notify=True)
             import traceback
             traceback.print_exc()
             sys.exit(1)
@@ -1045,7 +1067,7 @@ def main():
     
     # ===== MOVIE-ONLY MODE =====
     if args.movie:
-        message_processor("Movie-only mode: Creating video from existing images", "info", ntfy=True)
+        message_processor("Movie-only mode: Creating video from existing images", "info", notify=True)
         
         # Always prompt for folder selection in movie mode, or if only one folder but --force-prompt
         available_folders = find_available_run_folders()
@@ -1075,7 +1097,7 @@ def main():
         return
 
     # ===== IMAGE CAPTURE MODE =====
-    # message_processor("Starting image capture mode", "info", ntfy=True)
+    # message_processor("Starting image capture mode", "info", notify=True)
     
     # Clean up previous validation
     remove_valid_images_json(run_valid_images_file)
@@ -1117,7 +1139,7 @@ def main():
             message_processor(
                 f"Sleep:\t{sleep_hours:02d}:{sleep_minutes:02d}\nStart:\t{start_label}\nEnd:\t{sunset_datetime.strftime('%H:%M')}",
                 "none",
-                ntfy=True,
+                notify=True,
                 print_me=True
             )
 
@@ -1142,7 +1164,7 @@ def main():
             message_processor(
                 f"Sleep:\t00:00\nStart:\t{now.strftime('%H:%M')}\nEnd:\t{target_time.strftime('%H:%M')}",
                 "none",
-                ntfy=True,
+                notify=True,
                 print_me=True
             )
 
@@ -1151,7 +1173,7 @@ def main():
         session = create_session(USER_AGENTS, PROXIES, WEBPAGE)
         
         if not session:
-            message_processor("Failed to create initial session. Exiting.", "error", ntfy=True)
+            message_processor("Failed to create initial session. Exiting.", "error", notify=True)
             if health_monitor:
                 health_monitor.stop_monitoring()
             return
@@ -1172,7 +1194,7 @@ def main():
         message_processor("Enhanced downloader initialized", "info")
 
         # ===== ROBUST MAIN LOOP =====
-        message_processor("Awake and Running", ntfy=True, print_me=True)
+        message_processor("Awake and Running", notify=True, print_me=True)
         
         # Create and run the HourGlass main loop
         timelapse_loop = create_timelapse_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL, time_offset=time_offset)
@@ -1203,7 +1225,7 @@ def main():
         )
 
     except KeyboardInterrupt:
-        message_processor("Keyboard interrupt received", "warning", ntfy=True)
+        message_processor("Keyboard interrupt received", "warning", notify=True)
         try:
             message_processor("Processing existing images into video...")
             main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
@@ -1213,7 +1235,7 @@ def main():
                 # Fallback attempt
                 main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_images_file, time_offset, args.debug, args.cache)
             except Exception as fallback_error:
-                message_processor(f"Fallback video creation failed: {fallback_error}", "error", ntfy=True)
+                message_processor(f"Fallback video creation failed: {fallback_error}", "error", notify=True)
         finally:
             cursor.show()
             if health_monitor:
@@ -1221,7 +1243,7 @@ def main():
 
     except Exception as e:
         error_message = f"Unexpected error in main: {str(e)}"
-        message_processor(error_message, "error", ntfy=True)
+        message_processor(error_message, "error", notify=True)
         logging.error(error_message)
         
     finally:

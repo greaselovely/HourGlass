@@ -112,7 +112,7 @@ class TimelapseMainLoop:
                     # Check exit conditions - ONLY sunset time, no failure limits
                     now = datetime.now() + timedelta(hours=self.time_offset)
                     if now.hour == target_hour and now.minute >= target_minute:
-                        message_processor("Target time reached. Creating final video.", "info", ntfy=True)
+                        message_processor("Target time reached. Creating final video.", "info", notify=True)
                         main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
                         break
                     
@@ -247,7 +247,7 @@ class TimelapseMainLoop:
         """Handle keyboard interrupt gracefully."""
         
         try:
-            message_processor("Processing existing images into video...", "info", ntfy=True)
+            message_processor("Processing existing images into video...", "info", notify=True)
             main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
         except Exception as e:
             message_processor(f"Error during interrupt handling: {e}", "error")
@@ -255,7 +255,7 @@ class TimelapseMainLoop:
             try:
                 main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
             except Exception as fallback_error:
-                message_processor(f"Fallback video creation also failed: {fallback_error}", "error", ntfy=True)
+                message_processor(f"Fallback video creation also failed: {fallback_error}", "error", notify=True)
     
     def _attempt_final_video_creation(self, main_sequence_callback, run_images_folder, 
                                     video_path, run_audio_folder, run_valid_images_file):
@@ -265,7 +265,7 @@ class TimelapseMainLoop:
             message_processor("Attempting final video creation...", "info")
             main_sequence_callback(run_images_folder, video_path, run_audio_folder, run_valid_images_file)
         except Exception as e:
-            message_processor(f"Final video creation failed: {e}", "error", ntfy=True)
+            message_processor(f"Final video creation failed: {e}", "error", notify=True)
     
     def _calculate_backoff_delay(self):
         """Calculate exponential backoff delay based on consecutive failures."""

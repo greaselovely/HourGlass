@@ -12,9 +12,7 @@ import requests
 from random import choice
 from pathlib import Path
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
-
-from .timelapse_config import NTFY_URL, USER_AGENTS, IMAGES_FOLDER
+from .timelapse_config import USER_AGENTS, IMAGES_FOLDER
 
 
 def clear():
@@ -58,19 +56,23 @@ def log_jamming(log_message):
     return textwrap.fill(log_message, width=90, initial_indent='', subsequent_indent=' ' * log_preface)
 
 
-def message_processor(message, log_level="info", ntfy=False, print_me=True):
+def message_processor(message, log_level="info", notify=False, print_me=True, **kwargs):
     """
     Processes and distributes a message across different output channels.
 
-    This function can print the message, log it, and send it as a notification.
+    This function can print the message, log it, and send it as a notification
+    via all enabled notification services (ntfy, Pushover, etc.).
 
     Args:
-        NTFY_TOPIC (str): The URL for sending notifications.
         message (str): The message to be processed.
         log_level (str, optional): The logging level. Defaults to "info".
-        ntfy (bool, optional): Whether to send a notification. Defaults to False.
+        notify (bool, optional): Whether to send a notification. Defaults to False.
         print_me (bool, optional): Whether to print the message. Defaults to True.
     """
+    # Accept legacy ntfy= kwarg for any callers not yet updated
+    if kwargs.get('ntfy', False):
+        notify = True
+
     MESSAGE_PREFIXES = {
         "info": "[i]\t",
         "warning": "[!?]\t",
@@ -86,43 +88,18 @@ def message_processor(message, log_level="info", ntfy=False, print_me=True):
     log_func = getattr(logging, log_level, logging.info)
     log_func(message)
 
-    if ntfy:
-        # Get NTFY_TOPIC from global namespace
-        import sys
-        main_module = sys.modules.get('__main__')
-        if main_module and hasattr(main_module, 'NTFY_TOPIC'):
-            NTFY_TOPIC = main_module.NTFY_TOPIC
-        else:
-            from .timelapse_config import NTFY_TOPIC
-        send_to_ntfy(NTFY_TOPIC, message)
+    if notify:
+        from .notifications import notify as _notify
+        _notify(message, log_level)
 
 
 def send_to_ntfy(NTFY_TOPIC, message="Incomplete Message"):
     """
-    Sends a notification message to the specified NTFY topic.
-
-    Args:
-        NTFY_TOPIC (str): The topic name for the NTFY notification.
-        message (str, optional): The message to send. Defaults to "Incomplete Message".
-
-    Returns:
-        bool: True if the message was sent successfully, False otherwise.
+    Legacy wrapper — routes through the unified NotificationManager.
+    Kept for backward compatibility with any direct callers.
     """
-    if not NTFY_TOPIC:
-        message_processor("No NTFY topic provided. Skipping notification.", "warning")
-        return False
-
-    try:
-        NTFY_TOPIC = urljoin(NTFY_URL, NTFY_TOPIC)
-        message = str(message)  # cast to str in case we receive something else that won't process
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        response = requests.post(NTFY_TOPIC, headers=headers, data=message)
-        response.raise_for_status()
-        message_processor(f"Notification sent to {NTFY_TOPIC}")
-        return True
-    except requests.RequestException as e:
-        message_processor(f"Failed to send notification: {e}", "error")
-        return False
+    from .notifications import notify as _notify
+    return _notify(str(message), "info")
 
 
 def activity(char, run_images_folder, image_size, time_stamp=""):
@@ -327,11 +304,11 @@ def check_socks_proxy(config):
                 return {'reachable': True, 'method': 'hostname', 'error': None}
             except socket.gaierror as e:
                 error_msg = f"SOCKS proxy hostname DNS resolution failed: {host} - {e}"
-                message_processor(error_msg, "error", ntfy=True)
+                message_processor(error_msg, "error", notify=True)
                 return {'reachable': False, 'method': 'hostname', 'error': str(e)}
             except (socket.timeout, ConnectionRefusedError, OSError) as e:
                 error_msg = f"SOCKS proxy not responding at {host}:{port} - {e}"
-                message_processor(error_msg, "error", ntfy=True)
+                message_processor(error_msg, "error", notify=True)
                 return {'reachable': False, 'method': 'hostname', 'error': str(e)}
         except Exception as e:
             error_msg = f"Error checking SOCKS proxy (hostname): {e}"
@@ -357,7 +334,7 @@ def check_socks_proxy(config):
             return {'reachable': True, 'method': 'ip', 'error': None}
         except (socket.timeout, ConnectionRefusedError, OSError) as e:
             error_msg = f"SOCKS proxy not responding at {host}:{port} - {e}"
-            message_processor(error_msg, "error", ntfy=True)
+            message_processor(error_msg, "error", notify=True)
             return {'reachable': False, 'method': 'ip', 'error': str(e)}
         except Exception as e:
             error_msg = f"Error checking SOCKS proxy (IP): {e}"

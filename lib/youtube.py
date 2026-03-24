@@ -8,14 +8,14 @@
         # video_id, youtube_client = upload_to_youtube(video_path, video_title, video_description)
         
         # if video_id and youtube_client:
-        #     message_processor(f"Video uploaded to YouTube ID: {video_id}", ntfy=True)
+        #     message_processor(f"Video uploaded to YouTube ID: {video_id}", notify=True)
             
         #     # Now, add the video to the playlist
         #     success, message = add_video_to_playlist(youtube_client, video_id)
         #     if success:
-        #         message_processor(message, ntfy=True)
+        #         message_processor(message, notify=True)
         #     else:
-        #         message_processor(message, ntfy=True)
+        #         message_processor(message, notify=True)
         # else:
-        #     message_processor("Failed to upload video to YouTube", "error", ntfy=True)
-        #     message_processor(f"{os.path.basename(video_path)} saved", ntfy=True, print_me=False)
+        #     message_processor("Failed to upload video to YouTube", "error", notify=True)
+        #     message_processor(f"{os.path.basename(video_path)} saved", notify=True, print_me=False)

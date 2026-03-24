@@ -215,9 +215,21 @@ class ConfigValidator:
             elif points != sorted(points):
                 self.validation_warnings.append("escalation_points should be in ascending order")
                 
-        # Check if NTFY is configured
-        if 'ntfy' in alerts and not alerts['ntfy']:
-            self.validation_warnings.append("NTFY topic is not configured - notifications will not be sent")
+        # Check notification services
+        services = alerts.get('services', {})
+        if not services:
+            self.validation_warnings.append("No notification services configured")
+        else:
+            ntfy_svc = services.get('ntfy', {})
+            if ntfy_svc.get('enabled') and not ntfy_svc.get('topic'):
+                self.validation_errors.append("ntfy is enabled but has no topic configured")
+            po_svc = services.get('pushover', {})
+            if po_svc.get('enabled'):
+                if not po_svc.get('api_token') or not po_svc.get('user_key'):
+                    self.validation_errors.append("Pushover is enabled but missing api_token or user_key")
+            has_any = (ntfy_svc.get('enabled') or po_svc.get('enabled'))
+            if not has_any:
+                self.validation_warnings.append("No notification services are enabled")
     
     def _validate_user_agents(self, config):
         """Validate user agent configurations."""
