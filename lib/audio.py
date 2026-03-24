@@ -1372,35 +1372,32 @@ def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fade
             # This creates overlap during crossfade periods
             if i == 0:
                 start_time = 0
-                # First clip: play for segment_duration, fade out at end
-                clip_duration = min(clip.duration, segment_duration)
-                clip = clip.subclip(0, clip_duration)
-                clip = clip.audio_fadeout(crossfade_seconds)
+                target_duration = segment_duration
             elif i == num_songs - 1:
-                # Last clip: starts at overlap point, plays to end of video
                 start_time = (segment_duration - crossfade_seconds) * i
-                remaining_duration = video_duration_sec - start_time
+                target_duration = video_duration_sec - start_time
+            else:
+                start_time = (segment_duration - crossfade_seconds) * i
+                target_duration = segment_duration
 
-                # If the song is shorter than remaining duration, loop it to fill the gap
-                if clip.duration < remaining_duration:
-                    message_processor(
-                        f"    Last song ({clip.duration:.1f}s) shorter than remaining time ({remaining_duration:.1f}s). Looping to fill.",
-                        "info"
-                    )
-                    clip = audio_loop(clip, duration=remaining_duration)
-                    clip_duration = remaining_duration
-                else:
-                    clip_duration = remaining_duration
-                    clip = clip.subclip(0, clip_duration)
+            # Loop any song that's shorter than its allocated segment
+            if clip.duration < target_duration:
+                message_processor(
+                    f"    Song {i+1} ({clip.duration:.1f}s) shorter than segment ({target_duration:.1f}s). Looping to fill.",
+                    "info"
+                )
+                clip = audio_loop(clip, duration=target_duration)
+                clip_duration = target_duration
+            else:
+                clip_duration = target_duration
+                clip = clip.subclip(0, clip_duration)
 
+            # Apply fades
+            if i > 0:
                 clip = clip.audio_fadein(crossfade_seconds)
+            if i == num_songs - 1:
                 clip = clip.audio_fadeout(fadeout_seconds)
             else:
-                # Middle clips: fade in and out
-                start_time = (segment_duration - crossfade_seconds) * i
-                clip_duration = min(clip.duration, segment_duration)
-                clip = clip.subclip(0, clip_duration)
-                clip = clip.audio_fadein(crossfade_seconds)
                 clip = clip.audio_fadeout(crossfade_seconds)
 
             # Set when this clip starts playing
