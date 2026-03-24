@@ -51,7 +51,7 @@ usage() {
 Usage: $(basename "$0") -p PROJECT [-f] [-d MMDDYYYY] [-o N] [-y] [-h]
 
   -p PROJECT    project name (required, e.g. VLA) — loads configs/PROJECT.json
-  -f            force: skip local file check, smart wait, and ntfy polling
+  -f            force: skip local file check, smart wait, and polling
   -d MMDDYYYY   specific date (overrides -o and -y)
   -o N          N days ago (1 = yesterday)
   -y            yesterday (same as -o 1)
@@ -117,20 +117,37 @@ if [[ -z "$PROJECT" ]]; then
   exit 1
 fi
 
-# Load ntfy config from project JSON
+# ============================================================================
+# Load config from project JSON
+# ============================================================================
 CONFIG_JSON="${SCRIPT_DIR}/configs/${PROJECT}.json"
 if [[ ! -f "$CONFIG_JSON" ]]; then
   echo "Error: Config not found: ${CONFIG_JSON}"
   exit 1
 fi
-NTFY_BASE=$(jq -r '.ntfy // empty' "$CONFIG_JSON")
-NTFY_TOPIC_NAME=$(jq -r '.alerts.ntfy // empty' "$CONFIG_JSON")
-if [[ -z "$NTFY_BASE" || -z "$NTFY_TOPIC_NAME" ]]; then
-  echo "Error: ntfy not configured in ${CONFIG_JSON}. Need 'ntfy' (base URL) and 'alerts.ntfy' (topic name)."
-  exit 1
+
+# Status API config (primary method for cron path)
+TAILSCALE_IP=$(jq -r '.status_api.tailscale_ip // empty' "$CONFIG_JSON")
+STATUS_PORT=$(jq -r '.status_api.port // 8321' "$CONFIG_JSON")
+STATUS_API_URL=""
+if [[ -n "$TAILSCALE_IP" ]]; then
+  STATUS_API_URL="http://${TAILSCALE_IP}:${STATUS_PORT}/status/${PROJECT}"
 fi
-NTFY_TOPIC="${NTFY_BASE%/}/${NTFY_TOPIC_NAME}"
-NTFY_JSON_URL="https://ntfy.sh/${NTFY_TOPIC_NAME}/json"
+
+# Notification services config
+NTFY_BASE=$(jq -r '.ntfy // empty' "$CONFIG_JSON")
+NTFY_TOPIC_NAME=$(jq -r '.alerts.services.ntfy.topic // empty' "$CONFIG_JSON")
+NTFY_ENABLED=$(jq -r '.alerts.services.ntfy.enabled // false' "$CONFIG_JSON")
+NTFY_TOPIC=""
+NTFY_JSON_URL=""
+if [[ "$NTFY_ENABLED" == "true" && -n "$NTFY_BASE" && -n "$NTFY_TOPIC_NAME" ]]; then
+  NTFY_TOPIC="${NTFY_BASE%/}/${NTFY_TOPIC_NAME}"
+  NTFY_JSON_URL="https://ntfy.sh/${NTFY_TOPIC_NAME}/json"
+fi
+
+PO_ENABLED=$(jq -r '.alerts.services.pushover.enabled // false' "$CONFIG_JSON")
+PO_API_TOKEN=$(jq -r '.alerts.services.pushover.api_token // empty' "$CONFIG_JSON")
+PO_USER_KEY=$(jq -r '.alerts.services.pushover.user_key // empty' "$CONFIG_JSON")
 
 # Derive paths from project name (convention: HourGlass/{PROJECT}/video/)
 REMOTE_BASE="HourGlass/${PROJECT}/video"
@@ -169,7 +186,7 @@ resolve_date() {
 
 DATE_STR="$(resolve_date)"
 
-# Initial filename — may be updated after ntfy polling or SSH check
+# Initial filename — may be updated after polling or SSH check
 FILENAME="${PROJECT}.${DATE_STR}.mp4"
 REMOTE_FILE="${REMOTE_BASE}/${FILENAME}"
 
@@ -178,30 +195,189 @@ log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') | $msg"
 }
 
+# ============================================================================
+# Notification: sends to all enabled services (ntfy + Pushover)
+# ============================================================================
 notify() {
   local msg="$1"
   local priority="${2:-default}"  # default, low, high, urgent
   log "$msg"
-  curl -s -H "Priority: ${priority}" -d "[v.sh] $msg" "${NTFY_TOPIC}" >/dev/null || true
+
+  # ntfy
+  if [[ -n "$NTFY_TOPIC" ]]; then
+    curl -s -H "Priority: ${priority}" -d "[v.sh] $msg" "${NTFY_TOPIC}" >/dev/null 2>&1 || true
+  fi
+
+  # Pushover
+  if [[ "$PO_ENABLED" == "true" && -n "$PO_API_TOKEN" && -n "$PO_USER_KEY" ]]; then
+    local po_priority=0
+    case "$priority" in
+      low)     po_priority=-1 ;;
+      high)    po_priority=1 ;;
+      urgent)  po_priority=1 ;;
+      *)       po_priority=0 ;;
+    esac
+    curl -s --form-string "token=${PO_API_TOKEN}" \
+            --form-string "user=${PO_USER_KEY}" \
+            --form-string "message=[v.sh] $msg" \
+            --form-string "priority=${po_priority}" \
+            "https://api.pushover.net/1/messages.json" >/dev/null 2>&1 || true
+  fi
 }
 
+# ============================================================================
+# Status API functions (primary method — queries HourGlass over Tailscale)
+# ============================================================================
+
+# Fetch status JSON from the API. Returns empty string on failure.
+get_api_status() {
+  if [[ -z "$STATUS_API_URL" ]]; then
+    return 1
+  fi
+  curl -s --connect-timeout 5 --max-time 10 "$STATUS_API_URL" 2>/dev/null || true
+}
+
+# Get target end time from status API
+get_end_time_from_api() {
+  local status
+  status=$(get_api_status) || return
+  if [[ -z "$status" ]]; then
+    return
+  fi
+  echo "$status" | jq -r '.capture.target_time // empty' 2>/dev/null
+}
+
+# Poll status API for video_saved state
+# Returns 0 on success (sets FILENAME and REMOTE_FILE), 1 on timeout
+wait_for_video_via_api() {
+  local max_attempts=60
+  local interval=60
+  local attempt=0
+
+  log "Polling status API for video completion (${max_attempts}x${interval}s)..."
+
+  while [[ $attempt -lt $max_attempts ]]; do
+    attempt=$((attempt + 1))
+    local status
+    status=$(get_api_status) || { sleep "$interval"; continue; }
+
+    if [[ -z "$status" ]]; then
+      log "API unreachable (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
+      sleep "$interval"
+      continue
+    fi
+
+    local state
+    state=$(echo "$status" | jq -r '.state // empty' 2>/dev/null) || true
+
+    case "$state" in
+      video_saved)
+        local api_filename
+        api_filename=$(echo "$status" | jq -r '.video.filename // empty' 2>/dev/null) || true
+        if [[ -n "$api_filename" ]]; then
+          FILENAME="$api_filename"
+          REMOTE_FILE="${REMOTE_BASE}/${FILENAME}"
+        fi
+        log "Video saved: ${FILENAME} (attempt ${attempt}/${max_attempts})"
+        return 0
+        ;;
+      error)
+        local detail
+        detail=$(echo "$status" | jq -r '.detail // "unknown"' 2>/dev/null) || true
+        log "HourGlass reported error: ${detail}"
+        notify "HourGlass error: ${detail}" "high"
+        return 1
+        ;;
+      idle)
+        # Check if it completed (detail says "Completed") or never started
+        local detail
+        detail=$(echo "$status" | jq -r '.detail // empty' 2>/dev/null) || true
+        if [[ "$detail" == "Completed" ]]; then
+          # Video was saved but status already moved to idle — check for file
+          log "Status is idle/Completed, checking for video file on server..."
+          return 1  # Fall through to SSH resolution
+        fi
+        log "State: idle (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
+        ;;
+      *)
+        log "State: ${state:-unknown} (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
+        ;;
+    esac
+
+    if [[ $attempt -lt $max_attempts ]]; then
+      sleep "$interval"
+    fi
+  done
+
+  notify "Timed out waiting for video via status API after $((max_attempts * interval / 60))min" "high"
+  return 1
+}
+
+# ============================================================================
+# ntfy fallback functions (used when status API is not configured)
+# ============================================================================
+
 # Fetch today's End time from ntfy.sh topic history
-# Returns End time in HH:MM format, or empty string if not found
 get_end_time_from_ntfy() {
-  # Fetch last 24h of messages, look for schedule notification with End time
-  # Message format: "Sleep:\t02:11\nStart:\t07:12\nEnd:\t18:05"
+  if [[ -z "$NTFY_JSON_URL" ]]; then
+    return
+  fi
   local end_time
   end_time=$(curl -s "${NTFY_JSON_URL}?poll=1&since=24h" 2>/dev/null | \
     grep -o '"message":"[^"]*"' | \
     grep 'End:\\t' | \
     tail -1 | \
     sed 's/.*End:\\t\([0-9]\{1,2\}:[0-9]\{2\}\).*/\1/')
-
   echo "$end_time"
 }
 
+# Poll ntfy for "saved successfully" message, extract actual filename
+wait_for_save_via_ntfy() {
+  if [[ -z "$NTFY_JSON_URL" ]]; then
+    notify "No status API or ntfy configured. Cannot poll for completion." "high"
+    return 1
+  fi
+
+  local max_attempts=30
+  local interval=60
+  local attempt=0
+
+  log "Falling back to ntfy polling for save confirmation (${max_attempts}x${interval}s)..."
+
+  while [[ $attempt -lt $max_attempts ]]; do
+    attempt=$((attempt + 1))
+    local match
+    match=$(curl -s "${NTFY_JSON_URL}?poll=1&since=24h" 2>/dev/null | \
+      grep -o '"message":"[^"]*"' | \
+      grep "${PROJECT}\.${DATE_STR}.*saved successfully" | \
+      tail -1) || true
+
+    if [[ -n "$match" ]]; then
+      local extracted
+      extracted=$(echo "$match" | grep -o "${PROJECT}\.[0-9]\{8\}\(\.[A-Z_]*\)*\.mp4") || true
+      if [[ -n "$extracted" ]]; then
+        FILENAME="$extracted"
+        REMOTE_FILE="${REMOTE_BASE}/${FILENAME}"
+        log "Save confirmed via ntfy: ${FILENAME} (attempt ${attempt}/${max_attempts})"
+        return 0
+      fi
+    fi
+
+    if [[ $attempt -lt $max_attempts ]]; then
+      log "No confirmation yet (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
+      sleep "$interval"
+    fi
+  done
+
+  notify "Timed out waiting for save confirmation via ntfy after $((max_attempts * interval / 60))min" "high"
+  return 1
+}
+
+# ============================================================================
+# Shared utilities
+# ============================================================================
+
 # Calculate seconds to sleep until video should be ready
-# Returns 0 if we should proceed immediately
 calculate_sleep_seconds() {
   local end_time="$1"
 
@@ -214,7 +390,7 @@ calculate_sleep_seconds() {
   end_hour=$(echo "$end_time" | cut -d: -f1)
   end_min=$(echo "$end_time" | cut -d: -f2)
 
-  # Target time = End time + buffer (10# forces base-10, avoiding octal interpretation of leading zeros)
+  # Target time = End time + buffer (10# forces base-10)
   local target_min=$((10#$end_hour * 60 + 10#$end_min + SAVE_BUFFER_MIN))
   local target_hour=$((target_min / 60))
   target_min=$((target_min % 60))
@@ -235,47 +411,7 @@ calculate_sleep_seconds() {
   fi
 }
 
-# Poll ntfy for "saved successfully" message, extract actual filename
-# Returns 0 on success (sets FILENAME and REMOTE_FILE), 1 on timeout
-wait_for_save_confirmation() {
-  local max_attempts=30
-  local interval=60
-  local attempt=0
-
-  log "Polling ntfy for save confirmation (${max_attempts}x${interval}s)..."
-
-  while [[ $attempt -lt $max_attempts ]]; do
-    attempt=$((attempt + 1))
-    local match
-    match=$(curl -s "${NTFY_JSON_URL}?poll=1&since=24h" 2>/dev/null | \
-      grep -o '"message":"[^"]*"' | \
-      grep "${PROJECT}\.${DATE_STR}.*saved successfully" | \
-      tail -1) || true
-
-    if [[ -n "$match" ]]; then
-      # Extract filename (e.g. "VLA.02252026.mp4" or "VLA.02252026.NO_AUDIO.mp4")
-      local extracted
-      extracted=$(echo "$match" | grep -o "${PROJECT}\.[0-9]\{8\}\(\.[A-Z_]*\)*\.mp4") || true
-      if [[ -n "$extracted" ]]; then
-        FILENAME="$extracted"
-        REMOTE_FILE="${REMOTE_BASE}/${FILENAME}"
-        log "Save confirmed: ${FILENAME} (attempt ${attempt}/${max_attempts})"
-        return 0
-      fi
-    fi
-
-    if [[ $attempt -lt $max_attempts ]]; then
-      log "No confirmation yet (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
-      sleep "$interval"
-    fi
-  done
-
-  notify "Timed out waiting for save confirmation after $((max_attempts * interval / 60))min" "high"
-  return 1
-}
-
 # Check remote server for actual filename (handles NO_AUDIO variant)
-# Sets FILENAME and REMOTE_FILE on success, returns 1 if neither found
 resolve_remote_filename() {
   local base="${PROJECT}.${DATE_STR}"
   local candidates=("${base}.mp4" "${base}.NO_AUDIO.mp4")
@@ -293,7 +429,6 @@ resolve_remote_filename() {
 }
 
 # Validate downloaded file with ffprobe
-# Returns 0 if valid, 1 if corrupt (deletes bad file and notifies)
 validate_video() {
   local file="$1"
 
@@ -312,7 +447,6 @@ validate_video() {
     return 1
   fi
 
-  # Format duration as minutes:seconds for readability
   local dur_int=${duration%.*}
   local dur_min=$((dur_int / 60))
   local dur_sec=$((dur_int % 60))
@@ -320,6 +454,10 @@ validate_video() {
   echo "${dur_min}m${dur_sec}s"
   return 0
 }
+
+# ============================================================================
+# Pre-flight checks
+# ============================================================================
 
 # If local file exists, stop (unless -f force flag is set)
 if [[ "$FORCE" -eq 0 ]]; then
@@ -336,40 +474,65 @@ log "=== Invoked as: $0 -p ${PROJECT} | PID: $$ ==="
 log "Server: ${LINODE_IP}"
 log "Project: ${PROJECT}"
 log "Target date: ${DATE_STR}"
+[[ -n "$STATUS_API_URL" ]] && log "Status API: ${STATUS_API_URL}"
 
 # ============================================================================
 # Main flow: cron vs manual (-f)
 # ============================================================================
 
 if [[ "$FORCE" -eq 0 ]]; then
-  # --- Cron path: smart wait → poll ntfy → resolve filename → download → validate ---
+  # --- Cron path: smart wait → poll for completion → download → validate ---
 
-  END_TIME=$(get_end_time_from_ntfy)
+  # Step 1: Get end time (try status API first, fall back to ntfy)
+  END_TIME=""
+  if [[ -n "$STATUS_API_URL" ]]; then
+    END_TIME=$(get_end_time_from_api)
+    [[ -n "$END_TIME" ]] && log "Capture end time from status API: ${END_TIME}"
+  fi
+  if [[ -z "$END_TIME" && -n "$NTFY_JSON_URL" ]]; then
+    END_TIME=$(get_end_time_from_ntfy)
+    [[ -n "$END_TIME" ]] && log "Capture end time from ntfy: ${END_TIME}"
+  fi
+
+  # Step 2: Smart wait
   if [[ -n "$END_TIME" ]]; then
-    log "Capture end time from ntfy: ${END_TIME}"
     SLEEP_SECS=$(calculate_sleep_seconds "$END_TIME")
     if [[ $SLEEP_SECS -gt 0 ]]; then
       WAKE_TIME=$(date -v+"${SLEEP_SECS}"S +%H:%M 2>/dev/null || date -d "+${SLEEP_SECS} seconds" +%H:%M)
       log "Video not ready yet. Sleeping ${SLEEP_SECS}s (until ~${WAKE_TIME})..."
       notify "Waiting until ~${WAKE_TIME} for video to be ready" "low"
       sleep "$SLEEP_SECS"
-      log "Waking up, polling for save confirmation."
+      log "Waking up, polling for completion."
     else
-      log "Target time already passed, polling for save confirmation."
+      log "Target time already passed, polling for completion."
     fi
   else
-    log "Could not fetch End time from ntfy, polling for save confirmation."
+    log "Could not determine end time, polling for completion."
   fi
 
-  # Poll ntfy for "saved successfully" — also resolves the actual filename
-  if ! wait_for_save_confirmation; then
-    exit 1
+  # Step 3: Poll for video completion (status API first, ntfy fallback)
+  POLL_OK=0
+  if [[ -n "$STATUS_API_URL" ]]; then
+    if wait_for_video_via_api; then
+      POLL_OK=1
+    else
+      log "Status API polling failed, trying ntfy fallback..."
+    fi
+  fi
+  if [[ $POLL_OK -eq 0 ]]; then
+    if ! wait_for_save_via_ntfy; then
+      exit 1
+    fi
   fi
 
 else
   # --- Manual path (-f): skip wait + polling, resolve filename via SSH ---
-  log "Force mode: skipping smart wait and ntfy polling."
+  log "Force mode: skipping smart wait and polling."
 fi
+
+# ============================================================================
+# Download flow (shared by cron and manual paths)
+# ============================================================================
 
 # 1) Check SSH connectivity before touching firewall
 if ! ssh $SSH_OPTS "${LINODE_IP}" "true" 2>"${SCRIPT_DIR}/ssh_err.txt"; then
@@ -396,21 +559,26 @@ if ! ssh $SSH_OPTS "${LINODE_IP}" "true" 2>"${SCRIPT_DIR}/ssh_err.txt"; then
   fi
 fi
 
-# 2) Resolve filename via SSH if not already resolved by ntfy polling (manual -f path)
-if [[ "$FORCE" -eq 1 ]]; then
+# 2) Resolve filename via SSH if not already resolved by polling (force mode, or poll gave us idle/Completed)
+if [[ "$FORCE" -eq 1 ]] || [[ "$FILENAME" == "${PROJECT}.${DATE_STR}.mp4" ]]; then
+  # Filename may not have been resolved by polling — check server for actual file
   if ! resolve_remote_filename; then
-    notify "Remote file not found for ${PROJECT}.${DATE_STR} (checked both variants). No firewall change."
+    if [[ "$FORCE" -eq 1 ]]; then
+      notify "Remote file not found for ${PROJECT}.${DATE_STR} (checked both variants)."
+    else
+      notify "Remote file not found after polling: ${PROJECT}.${DATE_STR}."
+    fi
     exit 1
   fi
 else
-  # Cron path: ntfy already resolved the filename, verify it exists on the server
+  # Polling resolved the filename, verify it exists on the server
   if ssh $SSH_OPTS "${LINODE_IP}" "test -s '$REMOTE_FILE'" 2>/dev/null; then
     log "Remote file confirmed: ${REMOTE_FILE}"
   else
     if ssh $SSH_OPTS "${LINODE_IP}" "test -e '$REMOTE_FILE'" 2>/dev/null; then
-      notify "Remote file exists but is empty: ${REMOTE_FILE}. No firewall change." "high"
+      notify "Remote file exists but is empty: ${REMOTE_FILE}." "high"
     else
-      notify "Remote file not found: ${REMOTE_FILE}. No firewall change."
+      notify "Remote file not found: ${REMOTE_FILE}."
     fi
     exit 1
   fi
@@ -440,7 +608,7 @@ else
       exit 1
     fi
   else
-    notify "Retry failed. No firewall change. Check disk space, perms, or paths." "high"
+    notify "Retry failed. Check disk space, perms, or paths." "high"
     exit 1
   fi
 fi

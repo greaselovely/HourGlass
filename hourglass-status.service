@@ -1,0 +1,14 @@
+[Unit]
+Description=HourGlass Status API
+After=network.target
+
+[Service]
+Type=simple
+User=%USER%
+ExecStart=%VENV%/bin/python3 %REPO%/status_api.py --port 8321
+WorkingDirectory=%REPO%
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

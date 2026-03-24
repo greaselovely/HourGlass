@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
 from time import sleep
+from lib.status import write_status
 # Don't import timelapse_config yet - it may create default config
 # We'll import it after checking if project config exists
 
@@ -515,6 +516,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
     global config, health_monitor
     fps = 10
     
+    write_status(PROJECT_BASE, PROJECT_NAME, "creating_video")
+
     try:
         # Image validation with memory management
         message_processor("Validating Images (Fast Mode)")
@@ -699,16 +702,20 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
 
         except Exception as e:
             message_processor(f"Error in video creation: {e}", "error", notify=True)
+            write_status(PROJECT_BASE, PROJECT_NAME, "error", detail=str(e))
             video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
 
         # Check if video was created successfully
         if os.path.exists(video_path):
             video_size_mb = os.path.getsize(video_path) / (1024 * 1024)
             message_processor(
-                f"{video_path.split('/')[-1]} saved successfully ({video_size_mb:.1f}MB)", 
-                notify=True, 
+                f"{video_path.split('/')[-1]} saved successfully ({video_size_mb:.1f}MB)",
+                notify=True,
                 print_me=True
             )
+            write_status(PROJECT_BASE, PROJECT_NAME, "video_saved",
+                         video_filename=video_path.split('/')[-1],
+                         video_size_mb=round(video_size_mb, 1))
             
             # Log performance metrics
             message_processor(f"Video creation took {video_metrics['duration_seconds']:.1f}s, "
@@ -727,6 +734,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                     cleanup(run_audio_folder)
                 
                 message_processor("Main sequence completed successfully", notify=True)
+                write_status(PROJECT_BASE, PROJECT_NAME, "idle", detail="Completed")
                 
             except Exception as cleanup_error:
                 cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
@@ -737,6 +745,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         else:
             error_msg = f"Failed to create video: {video_path.split('/')[-1]}"
             message_processor(error_msg, "error", notify=True)
+            write_status(PROJECT_BASE, PROJECT_NAME, "error", detail=error_msg)
             if 'health_monitor' in globals():
                 health_monitor.update_performance_stats('errors_encountered')
 
@@ -748,6 +757,7 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         error_message = f"Error in main_sequence: {str(e)}"
         logging.error(error_message)
         message_processor(error_message, "error", notify=True)
+        write_status(PROJECT_BASE, PROJECT_NAME, "error", detail=str(e))
         if 'health_monitor' in globals():
             health_monitor.update_performance_stats('errors_encountered')
   
@@ -936,6 +946,8 @@ def main():
     # ===== DIRECTORY SETUP =====
     for folder in [PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER]:
         os.makedirs(folder, exist_ok=True)
+
+    write_status(PROJECT_BASE, PROJECT_NAME, "idle")
 
     # ===== HEALTH MONITORING INITIALIZATION =====
     try:
@@ -1144,6 +1156,9 @@ def main():
             )
 
             if sleep_timer > 0:
+                write_status(PROJECT_BASE, PROJECT_NAME, "sleeping",
+                             detail=f"Until {start_label}",
+                             target_time=sunset_datetime.strftime('%H:%M'))
                 if health_monitor:
                     health_monitor.set_sleep_status(True)
                 sleep(sleep_timer)
@@ -1195,6 +1210,8 @@ def main():
 
         # ===== ROBUST MAIN LOOP =====
         message_processor("Awake and Running", notify=True, print_me=True)
+        write_status(PROJECT_BASE, PROJECT_NAME, "capturing",
+                     target_time=f"{TARGET_HOUR:02d}:{TARGET_MINUTE:02d}")
         
         # Create and run the HourGlass main loop
         timelapse_loop = create_timelapse_main_loop(config, USER_AGENTS, PROXIES, WEBPAGE, IMAGE_URL, time_offset=time_offset)

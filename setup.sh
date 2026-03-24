@@ -161,5 +161,68 @@ else
 fi
 
 echo -e "[✓]\tAll Operation Telescope dependencies verified"
+
+# ===== STATUS API SERVICE (Linux only) =====
+install_status_api_service() {
+  local unit_name="hourglass-status.service"
+  local unit_template="${SCRIPT_DIR}/hourglass-status.service"
+  local unit_dest="/etc/systemd/system/${unit_name}"
+  local tmp_unit="/tmp/${unit_name}.tmp"
+
+  if [[ ! -f "$unit_template" ]]; then
+    echo -e "[!]\t${unit_template} not found, skipping service install"
+    return 0
+  fi
+
+  local venv_abs
+  venv_abs="$(cd "${SCRIPT_DIR}" && realpath venv)"
+  local repo_abs
+  repo_abs="$(cd "${SCRIPT_DIR}" && pwd)"
+  local run_user
+  run_user="$(whoami)"
+
+  # Generate unit file with actual paths
+  sed -e "s|%USER%|${run_user}|g" \
+      -e "s|%VENV%|${venv_abs}|g" \
+      -e "s|%REPO%|${repo_abs}|g" \
+      "$unit_template" > "$tmp_unit"
+
+  # Compare with installed version — skip if unchanged
+  if [[ -f "$unit_dest" ]] && diff -q "$tmp_unit" "$unit_dest" >/dev/null 2>&1; then
+    echo -e "[i]\tStatus API service unchanged, skipping"
+    rm -f "$tmp_unit"
+    # Ensure it's running
+    if ! systemctl is-active --quiet "$unit_name"; then
+      echo -e "[i]\tStarting status API service..."
+      sudo systemctl start "$unit_name"
+    fi
+    return 0
+  fi
+
+  echo -e "[i]\tInstalling status API systemd service..."
+  if ! sudo cp "$tmp_unit" "$unit_dest" 2>/dev/null; then
+    echo -e "[!]\tFailed to install service (sudo required). Skipping."
+    echo -e "[i]\tTo install manually: sudo cp ${tmp_unit} ${unit_dest} && sudo systemctl daemon-reload && sudo systemctl enable --now ${unit_name}"
+    rm -f "$tmp_unit"
+    return 0
+  fi
+  rm -f "$tmp_unit"
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now "$unit_name"
+  echo -e "[✓]\tStatus API service installed and started"
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ "$(uname)" != "Darwin" ]]; then
+  if command -v systemctl &>/dev/null; then
+    install_status_api_service
+  else
+    echo -e "[i]\tsystemd not found — skipping status API service install"
+  fi
+else
+  echo -e "[i]\tmacOS detected — skipping status API service install (server-side only)"
+fi
+
 echo -e "[i]\tInstallation complete. Virtual environment and packages are installed."
 echo -e "[i]\tYou can now run: ./hourglass.sh or python main.py"

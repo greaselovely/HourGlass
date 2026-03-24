@@ -228,36 +228,43 @@ def notifications_wizard(config_path):
     if "pushover" not in services:
         services["pushover"] = {"enabled": False, "api_token": "", "user_key": ""}
 
+    # Ensure status_api section exists
+    status_api = config.setdefault("status_api", {"tailscale_ip": "", "port": 8321})
+
     while True:
         print("\n" + "=" * 50)
-        print(" Notification Services")
+        print(" Notification & Status API")
         print("=" * 50)
         _print_status(services)
+        _print_status_api(status_api)
 
         print("\nOptions:")
         print("  1. Configure ntfy")
         print("  2. Configure Pushover")
-        print("  3. Toggle service on/off")
-        print("  4. Test notifications")
-        print("  5. Save & exit")
-        print("  6. Exit without saving")
+        print("  3. Configure Status API (Tailscale)")
+        print("  4. Toggle service on/off")
+        print("  5. Test notifications")
+        print("  6. Save & exit")
+        print("  7. Exit without saving")
 
-        choice = input("\nSelect (1-6): ").strip()
+        choice = input("\nSelect (1-7): ").strip()
 
         if choice == "1":
             _configure_ntfy(services, config)
         elif choice == "2":
             _configure_pushover(services)
         elif choice == "3":
-            _toggle_service(services)
+            _configure_status_api(status_api)
         elif choice == "4":
-            _test_notifications(config)
+            _toggle_service(services)
         elif choice == "5":
+            _test_notifications(config)
+        elif choice == "6":
             with open(path, "w") as f:
                 json.dump(config, f, indent=2)
             print(f"\nSaved to {path}")
             return True
-        elif choice == "6":
+        elif choice == "7":
             print("Exiting without saving.")
             return False
         else:
@@ -281,6 +288,36 @@ def _print_status(services):
             else:
                 details = "(not configured)"
         print(f"  {name:12s} [{status:3s}]  {details}")
+
+
+def _print_status_api(status_api):
+    """Print status API configuration."""
+    ip = status_api.get("tailscale_ip", "")
+    port = status_api.get("port", 8321)
+    if ip:
+        print(f"\n  Status API:  http://{ip}:{port}/status/{{PROJECT}}")
+    else:
+        print(f"\n  Status API:  (not configured — no Tailscale IP)")
+
+
+def _configure_status_api(status_api):
+    """Walk through status API setup."""
+    print("\n--- Status API Configuration ---")
+    print("The status API runs on your server and is queried by v.sh over Tailscale.")
+    print("Enter your server's Tailscale IP so v.sh knows where to connect.\n")
+
+    current_ip = status_api.get("tailscale_ip", "")
+    ip = input(f"Server Tailscale IP [{current_ip}]: ").strip()
+    if ip:
+        status_api["tailscale_ip"] = ip
+
+    current_port = status_api.get("port", 8321)
+    port_str = input(f"Status API port [{current_port}]: ").strip()
+    if port_str:
+        try:
+            status_api["port"] = int(port_str)
+        except ValueError:
+            print("Invalid port, keeping current value.")
 
 
 def _configure_ntfy(services, config):

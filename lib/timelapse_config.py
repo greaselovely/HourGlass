@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.1  # HourGlass version with TTS intro support
+CURRENT_VERSION = 2.2  # Multi-service notifications + status API
 
 def setup_logging(config):
     """
@@ -370,7 +370,11 @@ def load_config(config_path=None):
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1"
             ],
-            "ntfy": "http://ntfy.sh/"
+            "ntfy": "http://ntfy.sh/",
+            "status_api": {
+                "tailscale_ip": "",
+                "port": 8321
+            }
         }
 
     def update_config(config):

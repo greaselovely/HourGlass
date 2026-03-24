@@ -375,8 +375,21 @@ def create_initial_config(existing_config=None, project_name=None):
     config["alerts"]["escalation_points"] = [10, 50, 100, 500]
     config["alerts"]["repeated_hash_count"] = 0
     
+    # Status API settings
+    print("\n[9/10] Status API Configuration (optional)")
+    print("-" * 40)
+    print("The status API allows v.sh to check video readiness over Tailscale.")
+    print("Enter your server's Tailscale IP if you want to use this feature.\n")
+
+    current_ts_ip = config.get("status_api", {}).get("tailscale_ip", "")
+    ts_ip = input(f"Tailscale IP [{current_ts_ip}]: ").strip() if current_ts_ip else input("Tailscale IP (leave empty to skip): ").strip()
+    config["status_api"] = {
+        "tailscale_ip": ts_ip or current_ts_ip,
+        "port": int(get_input_with_default("Status API port", "8321"))
+    }
+
     # YouTube settings
-    print("\n[9/9] YouTube Upload Configuration (optional)")
+    print("\n[10/10] YouTube Upload Configuration (optional)")
     print("-" * 40)
     
     use_youtube = input("Configure YouTube upload? (y/n) [n]: ").strip().lower() == 'y'
