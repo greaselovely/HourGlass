@@ -228,6 +228,10 @@ def notifications_wizard(config_path):
     with open(path, "r") as f:
         config = json.load(f)
 
+    # Run config migration so new keys exist even if HourGlass hasn't started
+    from .timelapse_config import _migrate_alerts_to_services
+    config = _migrate_alerts_to_services(config)
+
     alerts = config.setdefault("alerts", {})
     services = alerts.setdefault("services", {})
 
