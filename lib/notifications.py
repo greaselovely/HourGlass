@@ -23,10 +23,11 @@ _PUSHOVER_PRIORITY = {
     "none": -1,
 }
 
-# Rate-limiting state (shared across all services)
-_last_send = 0.0
-_min_interval = 10  # seconds between any notification
-_backoff = 0         # current backoff seconds (0 = none)
+# Rate-limiting state per service
+_rate_state = {
+    "ntfy": {"last_send": 0.0, "backoff": 0, "min_interval": 10},
+    "pushover": {"last_send": 0.0, "backoff": 0, "min_interval": 1},
+}
 
 
 class NotificationManager:
@@ -75,45 +76,51 @@ class NotificationManager:
         if not self._services:
             return False
 
-        self._enforce_rate_limit()
-
         ok = False
         for name, svc in self._services.items():
             try:
-                if svc["type"] == "ntfy":
+                svc_type = svc["type"]
+                self._enforce_rate_limit(svc_type)
+                if svc_type == "ntfy":
                     ok |= self._send_ntfy(svc, message)
-                elif svc["type"] == "pushover":
+                elif svc_type == "pushover":
                     ok |= self._send_pushover(svc, message, log_level)
             except Exception as e:
                 logging.error(f"Notification service '{name}' error: {e}")
         return ok
 
     # ------------------------------------------------------------------
-    # Rate limiting (shared across services)
+    # Rate limiting (per service)
     # ------------------------------------------------------------------
     @staticmethod
-    def _enforce_rate_limit():
-        global _last_send, _backoff
+    def _get_rate_state(svc_type):
+        if svc_type not in _rate_state:
+            _rate_state[svc_type] = {"last_send": 0.0, "backoff": 0, "min_interval": 1}
+        return _rate_state[svc_type]
+
+    @staticmethod
+    def _enforce_rate_limit(svc_type):
+        state = NotificationManager._get_rate_state(svc_type)
         now = monotonic()
-        wait = max(_min_interval, _backoff) - (now - _last_send)
+        wait = max(state["min_interval"], state["backoff"]) - (now - state["last_send"])
         if wait > 0:
-            logging.info(f"Notification rate limit: waiting {wait:.0f}s")
+            logging.info(f"{svc_type} rate limit: waiting {wait:.0f}s")
             sleep(wait)
 
     @staticmethod
-    def _record_send():
-        global _last_send
-        _last_send = monotonic()
+    def _record_send(svc_type):
+        state = NotificationManager._get_rate_state(svc_type)
+        state["last_send"] = monotonic()
 
     @staticmethod
-    def _apply_backoff(seconds):
-        global _backoff
-        _backoff = seconds
+    def _apply_backoff(svc_type, seconds):
+        state = NotificationManager._get_rate_state(svc_type)
+        state["backoff"] = seconds
 
     @staticmethod
-    def _reset_backoff():
-        global _backoff
-        _backoff = 0
+    def _reset_backoff(svc_type):
+        state = NotificationManager._get_rate_state(svc_type)
+        state["backoff"] = 0
 
     # ------------------------------------------------------------------
     # ntfy
@@ -127,22 +134,23 @@ class NotificationManager:
             try:
                 resp = requests.post(url, headers=headers, data=str(message))
                 resp.raise_for_status()
-                self._record_send()
-                self._reset_backoff()
+                self._record_send("ntfy")
+                self._reset_backoff("ntfy")
                 logging.info(f"Notification sent to {url}")
                 return True
             except requests.RequestException as e:
                 is_429 = hasattr(e, "response") and e.response is not None and e.response.status_code == 429
+                state = self._get_rate_state("ntfy")
                 if is_429 and attempt < max_retries - 1:
-                    bo = max(30, _backoff * 2) if _backoff else 30
-                    self._apply_backoff(bo)
+                    bo = max(30, state["backoff"] * 2) if state["backoff"] else 30
+                    self._apply_backoff("ntfy", bo)
                     logging.warning(f"ntfy 429, backing off {bo}s (attempt {attempt+1}/{max_retries})")
                     sleep(bo)
                     continue
                 if is_429:
-                    self._apply_backoff(max(60, _backoff * 2) if _backoff else 60)
+                    self._apply_backoff("ntfy", max(60, state["backoff"] * 2) if state["backoff"] else 60)
                 logging.error(f"ntfy send failed: {e}")
-                self._record_send()
+                self._record_send("ntfy")
                 return False
         return False
 
@@ -167,13 +175,13 @@ class NotificationManager:
         try:
             resp = requests.post(url, data=payload)
             resp.raise_for_status()
-            self._record_send()
-            self._reset_backoff()
+            self._record_send("pushover")
+            self._reset_backoff("pushover")
             logging.info("Notification sent via Pushover")
             return True
         except requests.RequestException as e:
             logging.error(f"Pushover send failed: {e}")
-            self._record_send()
+            self._record_send("pushover")
             return False
 
 
