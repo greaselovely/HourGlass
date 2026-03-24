@@ -300,16 +300,47 @@ def _print_status_api(status_api):
         print(f"\n  Status API:  (not configured — no Tailscale IP)")
 
 
+def _detect_tailscale_ip():
+    """Try to detect the local Tailscale IPv4 address."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip().split("\n")[0]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
 def _configure_status_api(status_api):
     """Walk through status API setup."""
     print("\n--- Status API Configuration ---")
     print("The status API runs on your server and is queried by v.sh over Tailscale.")
-    print("Enter your server's Tailscale IP so v.sh knows where to connect.\n")
 
     current_ip = status_api.get("tailscale_ip", "")
-    ip = input(f"Server Tailscale IP [{current_ip}]: ").strip()
-    if ip:
-        status_api["tailscale_ip"] = ip
+    detected_ip = _detect_tailscale_ip()
+
+    if detected_ip and not current_ip:
+        print(f"Detected local Tailscale IP: {detected_ip}")
+        default_ip = detected_ip
+    elif detected_ip and current_ip and detected_ip != current_ip:
+        print(f"Detected local Tailscale IP: {detected_ip} (configured: {current_ip})")
+        default_ip = current_ip
+    else:
+        default_ip = current_ip
+
+    if default_ip:
+        ip = input(f"Server Tailscale IP [{default_ip}]: ").strip()
+        status_api["tailscale_ip"] = ip if ip else default_ip
+    else:
+        ip = input("Server Tailscale IP: ").strip()
+        if ip:
+            status_api["tailscale_ip"] = ip
+        else:
+            print("No IP set — status API will not be used by v.sh.")
 
     current_port = status_api.get("port", 8321)
     port_str = input(f"Status API port [{current_port}]: ").strip()
