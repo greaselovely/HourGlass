@@ -248,4 +248,4 @@ Contributions are welcome! Please ensure any changes maintain backward compatibi
 
 ## License
 
-[Your License Here]
+Just make sure you're wearing pants.
