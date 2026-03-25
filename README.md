@@ -85,6 +85,8 @@ python main.py <project_name> --test-compile
 ```
 HourGlass/
 ├── main.py                 # Main entry point
+├── status_api.py           # Status + video download API (runs on server)
+├── download.py             # Video download client (runs locally via cron)
 ├── lib/                    # Library modules
 │   ├── timelapse_core.py   # Core functionality
 │   ├── timelapse_config.py # Configuration management
@@ -155,36 +157,35 @@ tmux list-sessions
 tmux kill-session -t hourglass-<project_name>
 ```
 
-## Video Download (v.sh)
+## Video Download (download.py)
 
-`v.sh` downloads the completed timelapse video from the remote server to your local machine. It can run via cron or manually.
+`download.py` downloads the completed timelapse video from the remote server over HTTP via the status API. No SSH keys or firewall scripts needed — just Tailscale.
 
 ```bash
 # Usage
-./v.sh -p <PROJECT> [-f] [-d MMDDYYYY] [-o N] [-y] [-h]
+python download.py -p <PROJECT> [-f] [-d MMDDYYYY] [-o N] [-y]
 
 # Cron: waits for video to finish building, then downloads
-./v.sh -p VLA
+python download.py -p VLA
 
-# Manual re-run: skip checks, just download
-./v.sh -p VLA -f
+# Manual re-run: skip wait/poll, just download
+python download.py -p VLA -f
 
 # Download yesterday's video
-./v.sh -p VLA -f -y
+python download.py -p VLA -f -y
 
 # Download a specific date
-./v.sh -p VLA -d 09222025
+python download.py -p VLA -d 09222025
 ```
 
-**Cron path:** smart wait (based on End time from ntfy) → poll ntfy for "saved successfully" → resolve actual filename → SCP download → ffprobe validation → notify
+**Cron path:** smart wait (based on end time from status API) → poll status API for `video_saved` → HTTP download → ffprobe validation → notify
 
-**Manual path (`-f`):** skip file check/wait/polling → SSH check for file (both standard and NO_AUDIO variants) → SCP download → ffprobe validation → notify
+**Manual path (`-f`):** skip wait/polling → resolve filename via API → HTTP download → ffprobe validation → notify
 
 **Requirements:**
-- `jq` (reads ntfy config from `configs/<PROJECT>.json`)
 - `ffprobe` (validates downloaded video; optional but recommended)
-- SSH key access to the remote server
-- `~/.linode_config` with `LINODE_IP` set
+- Status API running on the server (`status_api.py`)
+- Tailscale connectivity to the server
 
 ## Cron Scheduling
 
@@ -198,7 +199,7 @@ Each project's instructions file contains customized cron entries. Example:
 0 20 * * * pkill -f 'python main.py project_name'
 
 # Download video daily at 17:00
-0 17 * * * /path/to/HourGlass/v.sh -p project_name >> ~/v.log 2>&1
+0 17 * * * /path/to/HourGlass/venv/bin/python /path/to/HourGlass/download.py -p project_name >> ~/v.log 2>&1
 ```
 
 ## Advanced Features

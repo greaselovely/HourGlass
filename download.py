@@ -2,7 +2,7 @@
 """
 HourGlass Video Download — polls the status API and downloads the video over HTTP.
 
-Replaces v.sh. Runs locally (e.g. via cron), talks to the status API over Tailscale.
+Runs locally (e.g. via cron), talks to the status API.
 
 Usage:
     python3 download.py -p VLA              # cron: smart wait + poll + download
@@ -293,7 +293,7 @@ def main():
     filename = f"{args.project}.{date_str}.mp4"
 
     # Pre-flight: check if local file already exists (unless force)
-    dest_dir = Path.cwd()
+    dest_dir = Path.home()
     if not args.force:
         for variant in [f"{args.project}.{date_str}.mp4", f"{args.project}.{date_str}.NO_AUDIO.mp4"]:
             if (dest_dir / variant).exists():
