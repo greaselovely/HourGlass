@@ -139,10 +139,8 @@ NTFY_BASE=$(jq -r '.ntfy // empty' "$CONFIG_JSON")
 NTFY_TOPIC_NAME=$(jq -r '.alerts.services.ntfy.topic // empty' "$CONFIG_JSON")
 NTFY_ENABLED=$(jq -r '.alerts.services.ntfy.enabled // false' "$CONFIG_JSON")
 NTFY_TOPIC=""
-NTFY_JSON_URL=""
 if [[ "$NTFY_ENABLED" == "true" && -n "$NTFY_BASE" && -n "$NTFY_TOPIC_NAME" ]]; then
   NTFY_TOPIC="${NTFY_BASE%/}/${NTFY_TOPIC_NAME}"
-  NTFY_JSON_URL="https://ntfy.sh/${NTFY_TOPIC_NAME}/json"
 fi
 
 PO_ENABLED=$(jq -r '.alerts.services.pushover.enabled // false' "$CONFIG_JSON")
@@ -314,66 +312,6 @@ wait_for_video_via_api() {
 }
 
 # ============================================================================
-# ntfy fallback functions (used when status API is not configured)
-# ============================================================================
-
-# Fetch today's End time from ntfy.sh topic history
-get_end_time_from_ntfy() {
-  if [[ -z "$NTFY_JSON_URL" ]]; then
-    return
-  fi
-  local end_time
-  end_time=$(curl -s "${NTFY_JSON_URL}?poll=1&since=24h" 2>/dev/null | \
-    grep -o '"message":"[^"]*"' | \
-    grep 'End:\\t' | \
-    tail -1 | \
-    sed 's/.*End:\\t\([0-9]\{1,2\}:[0-9]\{2\}\).*/\1/')
-  echo "$end_time"
-}
-
-# Poll ntfy for "saved successfully" message, extract actual filename
-wait_for_save_via_ntfy() {
-  if [[ -z "$NTFY_JSON_URL" ]]; then
-    notify "No status API or ntfy configured. Cannot poll for completion." "high"
-    return 1
-  fi
-
-  local max_attempts=30
-  local interval=60
-  local attempt=0
-
-  log "Falling back to ntfy polling for save confirmation (${max_attempts}x${interval}s)..."
-
-  while [[ $attempt -lt $max_attempts ]]; do
-    attempt=$((attempt + 1))
-    local match
-    match=$(curl -s "${NTFY_JSON_URL}?poll=1&since=24h" 2>/dev/null | \
-      grep -o '"message":"[^"]*"' | \
-      grep "${PROJECT}\.${DATE_STR}.*saved successfully" | \
-      tail -1) || true
-
-    if [[ -n "$match" ]]; then
-      local extracted
-      extracted=$(echo "$match" | grep -o "${PROJECT}\.[0-9]\{8\}\(\.[A-Z_]*\)*\.mp4") || true
-      if [[ -n "$extracted" ]]; then
-        FILENAME="$extracted"
-        REMOTE_FILE="${REMOTE_BASE}/${FILENAME}"
-        log "Save confirmed via ntfy: ${FILENAME} (attempt ${attempt}/${max_attempts})"
-        return 0
-      fi
-    fi
-
-    if [[ $attempt -lt $max_attempts ]]; then
-      log "No confirmation yet (attempt ${attempt}/${max_attempts}). Waiting ${interval}s..."
-      sleep "$interval"
-    fi
-  done
-
-  notify "Timed out waiting for save confirmation via ntfy after $((max_attempts * interval / 60))min" "high"
-  return 1
-}
-
-# ============================================================================
 # Shared utilities
 # ============================================================================
 
@@ -489,11 +427,6 @@ if [[ "$FORCE" -eq 0 ]]; then
     END_TIME=$(get_end_time_from_api)
     [[ -n "$END_TIME" ]] && log "Capture end time from status API: ${END_TIME}"
   fi
-  if [[ -z "$END_TIME" && -n "$NTFY_JSON_URL" ]]; then
-    END_TIME=$(get_end_time_from_ntfy)
-    [[ -n "$END_TIME" ]] && log "Capture end time from ntfy: ${END_TIME}"
-  fi
-
   # Step 2: Smart wait
   if [[ -n "$END_TIME" ]]; then
     SLEEP_SECS=$(calculate_sleep_seconds "$END_TIME")
@@ -510,19 +443,11 @@ if [[ "$FORCE" -eq 0 ]]; then
     log "Could not determine end time, polling for completion."
   fi
 
-  # Step 3: Poll for video completion (status API first, ntfy fallback)
-  POLL_OK=0
+  # Step 3: Poll for video completion via status API
   if [[ -n "$STATUS_API_URL" ]]; then
-    if wait_for_video_via_api; then
-      POLL_OK=1
-    else
-      log "Status API polling failed, trying ntfy fallback..."
-    fi
-  fi
-  if [[ $POLL_OK -eq 0 ]]; then
-    if ! wait_for_save_via_ntfy; then
-      exit 1
-    fi
+    wait_for_video_via_api || true  # On failure/idle, fall through to SSH resolution
+  else
+    log "No status API configured. Cannot poll for completion."
   fi
 
 else
