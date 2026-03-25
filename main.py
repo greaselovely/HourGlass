@@ -651,12 +651,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                 else:
                     audio_clip = final_song
 
-                # Sync audio and video - must loop BEFORE combining with TTS
-                # because CompositeAudioClip (from TTS+music) doesn't support looping
-                if audio_clip.duration < video_clip.duration:
-                    message_processor("Looping audio to match video length")
-                    audio_clip = audio_loop(audio_clip, duration=video_clip.duration)
-                else:
+                # Trim audio to match video length (no looping — songs should cover the full duration)
+                if audio_clip.duration > video_clip.duration:
                     audio_clip = audio_clip.subclip(0, video_clip.duration)
 
                 # Add TTS intro if we have one (after looping/trimming music)

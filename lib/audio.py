@@ -853,22 +853,37 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
 
     # Minimum number of songs to ensure variety and even distribution
     MIN_SONGS = 2
+    video_duration_sec = video_duration / 1000
+
+    def _all_songs_cover_segments(song_list):
+        """Check that every song is long enough to cover its evenly-split segment."""
+        if not song_list:
+            return False
+        segment = video_duration_sec / len(song_list)
+        return all(dur >= segment for _, dur in song_list)
 
     # Try downloading from Pixabay
-    # Continue until we have enough duration AND at least MIN_SONGS
-    while (total_duration < video_duration / 1000 or len(songs) < MIN_SONGS) and attempts < max_attempts:
+    # Continue until we have enough duration, at least MIN_SONGS,
+    # AND every song can cover its segment without looping
+    while attempts < max_attempts:
+        # Check if we're done: enough songs, enough total duration, each song covers its segment
+        if (len(songs) >= MIN_SONGS
+                and total_duration >= video_duration_sec
+                and _all_songs_cover_segments(songs)):
+            break
+
         song_path, song_duration_ms, song_src = single_song_download(
             AUDIO_FOLDER, debug=debug, config=config, song_history=song_history
         )
         if song_path and song_duration_ms and song_src:
-            song_duration_sec = song_duration_ms / 1000
-            songs.append((song_path, song_duration_sec))
-            total_duration += song_duration_sec
+            song_duration_sec_val = song_duration_ms / 1000
+            songs.append((song_path, song_duration_sec_val))
+            total_duration += song_duration_sec_val
             pixabay_success = True
 
             # Add to song history and save immediately
             song_name = os.path.basename(song_path).replace('.mp3', '')
-            song_history = add_song_to_history(song_history, song_src, song_name, song_duration_sec)
+            song_history = add_song_to_history(song_history, song_src, song_name, song_duration_sec_val)
             save_song_history(song_history, history_file)
 
             # Add successful download to cache
@@ -881,8 +896,9 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
 
         attempts += 1
 
-    # Check if we got enough audio from Pixabay (need duration AND minimum songs)
-    if total_duration >= video_duration / 1000 and len(songs) >= MIN_SONGS:
+    # Check if we got enough audio from Pixabay
+    if (len(songs) >= MIN_SONGS and total_duration >= video_duration_sec
+            and _all_songs_cover_segments(songs)):
         message_processor(f"Successfully downloaded {len(songs)} songs from Pixabay, total: {total_duration:.2f}s", "info")
         return songs
 
@@ -1380,14 +1396,13 @@ def distribute_songs_evenly(songs, video_duration_sec, crossfade_seconds=5, fade
                 start_time = (segment_duration - crossfade_seconds) * i
                 target_duration = segment_duration
 
-            # Loop any song that's shorter than its allocated segment
+            # Trim song to fit its segment (songs should already be long enough)
             if clip.duration < target_duration:
                 message_processor(
-                    f"    Song {i+1} ({clip.duration:.1f}s) shorter than segment ({target_duration:.1f}s). Looping to fill.",
-                    "info"
+                    f"    Song {i+1} ({clip.duration:.1f}s) shorter than segment ({target_duration:.1f}s). Using full song.",
+                    "warning"
                 )
-                clip = audio_loop(clip, duration=target_duration)
-                clip_duration = target_duration
+                clip_duration = clip.duration
             else:
                 clip_duration = target_duration
                 clip = clip.subclip(0, clip_duration)
