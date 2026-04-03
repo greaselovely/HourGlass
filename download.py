@@ -125,7 +125,7 @@ def calculate_sleep_seconds(end_time_str):
     return max(diff * 60, 0)
 
 
-def poll_for_video(api_url, max_attempts=60, interval=60):
+def poll_for_video(api_url, date_str, max_attempts=60, interval=60):
     """
     Poll status API for video_saved state.
     Returns filename on success, None on timeout/error.
@@ -155,9 +155,14 @@ def poll_for_video(api_url, max_attempts=60, interval=60):
             return None
 
         if state == "idle" and status.get("detail") == "Completed":
-            log("Status is idle/Completed, resolving filename from status...")
             filename = (status.get("video") or {}).get("filename")
-            return filename  # May be None — caller handles resolution
+            if filename and date_str in filename:
+                log(f"Status is idle/Completed with today's file: {filename}")
+                return filename
+            log(f"Status is idle/Completed but file '{filename}' doesn't match today ({date_str}). Still waiting...")
+            if attempt < max_attempts:
+                time.sleep(interval)
+            continue
 
         log(f"State: {state or 'unknown'} (attempt {attempt}/{max_attempts}). Waiting {interval}s...")
         if attempt < max_attempts:
@@ -322,7 +327,7 @@ def main():
         else:
             log("Could not determine end time, polling for completion.")
 
-        result = poll_for_video(api_url)
+        result = poll_for_video(api_url, date_str)
         if result:
             filename = result
     else:
