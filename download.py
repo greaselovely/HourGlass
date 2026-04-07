@@ -159,10 +159,9 @@ def poll_for_video(api_url, date_str, max_attempts=60, interval=60):
             if filename and date_str in filename:
                 log(f"Status is idle/Completed with today's file: {filename}")
                 return filename
-            log(f"Status is idle/Completed but file '{filename}' doesn't match today ({date_str}). Still waiting...")
-            if attempt < max_attempts:
-                time.sleep(interval)
-            continue
+            # No filename or stale filename — stop polling, let caller try HEAD resolution
+            log(f"Status is idle/Completed but file '{filename}' doesn't match today ({date_str}). Falling through to file resolution.")
+            return None
 
         log(f"State: {state or 'unknown'} (attempt {attempt}/{max_attempts}). Waiting {interval}s...")
         if attempt < max_attempts:
@@ -184,9 +183,22 @@ def download_video(base_url, project, filename, dest_dir):
 
     try:
         with urlopen(url, timeout=300) as resp:
+            total = int(resp.headers.get("Content-Length", 0))
+            downloaded = 0
             with open(dest, "wb") as f:
                 while chunk := resp.read(1024 * 1024):
                     f.write(chunk)
+                    downloaded += len(chunk)
+                    if total and sys.stdout.isatty():
+                        pct = downloaded / total
+                        mb_down = downloaded / (1024 * 1024)
+                        mb_total = total / (1024 * 1024)
+                        bar_len = 30
+                        filled = int(bar_len * pct)
+                        bar = "█" * filled + "░" * (bar_len - filled)
+                        print(f"\r  {bar} {pct:5.1%}  {mb_down:.0f}/{mb_total:.0f}MB", end="", flush=True)
+            if total and sys.stdout.isatty():
+                print()
     except Exception as e:
         log(f"Download failed: {e}")
         dest.unlink(missing_ok=True)
@@ -335,7 +347,15 @@ def main():
 
     # Resolve filename if we don't have one from polling (or force mode)
     if filename == f"{args.project}.{date_str}.mp4":
-        resolved = resolve_filename_from_api(base_url, args.project, date_str)
+        resolved = None
+        max_resolve = 1 if args.force else 10
+        for i in range(1, max_resolve + 1):
+            resolved = resolve_filename_from_api(base_url, args.project, date_str)
+            if resolved:
+                break
+            if i < max_resolve:
+                log(f"File not found on server (attempt {i}/{max_resolve}). Retrying in 60s...")
+                time.sleep(60)
         if not resolved:
             notifier.send(f"Video file not found for {args.project}.{date_str}", "high")
             sys.exit(1)
