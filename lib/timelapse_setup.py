@@ -24,6 +24,56 @@ def validate_url(url):
     """Basic URL validation."""
     return url.startswith(('http://', 'https://'))
 
+
+def parse_coordinate_input(user_input):
+    """
+    Parse user input for coordinates.
+
+    Accepts:
+    - Direct coordinates: "34.0788, -107.6166" or "34.0788 -107.6166"
+    - Google Maps URL: https://www.google.com/maps/@34.0788,-107.6166,15z
+    - timeanddate.com URL: https://www.timeanddate.com/sun/@34.0788,-107.6166
+
+    Returns:
+        tuple: (lat, lng) as floats, or (None, None) if not parseable
+    """
+    user_input = user_input.strip()
+
+    if not user_input:
+        return None, None
+
+    # Check if it's a URL
+    if user_input.startswith('http'):
+        from lib.sun_schedule import extract_coords_from_url
+        return extract_coords_from_url(user_input)
+
+    # Try to parse as direct coordinates
+    # Handle "lat, lng" or "lat lng" or "lat,lng" formats
+    import re
+
+    # Match coordinate patterns
+    coord_pattern = r'^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$'
+    match = re.match(coord_pattern, user_input)
+
+    if match:
+        try:
+            lat = float(match.group(1))
+            lng = float(match.group(2))
+            # Validate ranges
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                return lat, lng
+        except ValueError:
+            pass
+
+    return None, None
+
+
+def validate_coordinates(lat, lng):
+    """Validate that coordinates are within valid ranges."""
+    if lat is None or lng is None:
+        return False
+    return -90 <= lat <= 90 and -180 <= lng <= 180
+
 def list_existing_projects():
     """List all existing project configurations."""
     configs_dir = Path("configs")
@@ -194,38 +244,69 @@ def create_initial_config(existing_config=None, project_name=None):
     # Sun/daylight settings
     print("\n[5/8] Daylight Hours Configuration")
     print("-" * 40)
-    print("Configure automatic sunrise/sunset detection or set manual times.")
+    print("Enter webcam location for automatic sunrise/sunset times.")
     print("")
-    
-    # Check for existing sun URL
+    print("You can enter:")
+    print("  - Coordinates directly: 34.0788, -107.6166")
+    print("  - A Google Maps URL (right-click location > 'What's here?' > copy URL)")
+    print("  - A legacy timeanddate.com URL")
+    print("  - Find coordinates at: https://www.latlong.net/")
+    print("")
+
+    # Check for existing coordinates or URL
+    current_lat = config.get("sun", {}).get("lat")
+    current_lng = config.get("sun", {}).get("lng")
     current_sun_url = config.get("sun", {}).get("URL", "")
-    
-    # Ask for sun URL first
-    print("Option 1: Automatic sunrise/sunset times from timeanddate.com")
-    print("Examples:")
-    print("  - For New York: https://www.timeanddate.com/sun/usa/new-york")
-    print("  - For London: https://www.timeanddate.com/sun/uk/london")
-    print("  - For coordinates: https://www.timeanddate.com/sun/@40.7128,-74.0060")
-    print("")
-    
-    if current_sun_url and current_sun_url != "":
-        sun_url = input(f"Sun schedule URL (current: {current_sun_url}): ").strip()
-        if not sun_url:
-            sun_url = current_sun_url
+
+    # Display current location if available
+    if current_lat is not None and current_lng is not None:
+        print(f"Current location: {current_lat}, {current_lng}")
+    elif current_sun_url:
+        # Try to extract coords from legacy URL
+        lat, lng = parse_coordinate_input(current_sun_url)
+        if lat is not None and lng is not None:
+            print(f"Current location (from URL): {lat}, {lng}")
+            current_lat, current_lng = lat, lng
+
+    # Get location input
+    lat, lng = None, None
+    while lat is None or lng is None:
+        if current_lat is not None and current_lng is not None:
+            location_input = input(f"Location [{current_lat}, {current_lng}]: ").strip()
+            if not location_input:
+                lat, lng = current_lat, current_lng
+                break
+        else:
+            location_input = input("Location (or press Enter for manual times only): ").strip()
+            if not location_input:
+                break
+
+        if location_input:
+            lat, lng = parse_coordinate_input(location_input)
+            if lat is None or lng is None:
+                print("Could not parse coordinates. Please try again.")
+                print("Format: 'lat, lng' (e.g., '34.0788, -107.6166') or paste a Google Maps URL")
+            else:
+                # Confirm coordinates
+                confirm = input(f"Detected coordinates: {lat}, {lng}. Is this correct? (y/n) [y]: ").strip().lower()
+                if confirm and confirm != 'y':
+                    lat, lng = None, None
+                    continue
+                break
+
+    # Store coordinates
+    config["sun"]["lat"] = lat
+    config["sun"]["lng"] = lng
+    # Keep URL empty for new configs (legacy field)
+    config["sun"]["URL"] = ""
+
+    if lat is not None and lng is not None:
+        print(f"Location set: {lat}, {lng}")
     else:
-        sun_url = input("Sun schedule URL (or press Enter to use manual times): ").strip()
-    
-    # Validate if provided
-    if sun_url and not sun_url.startswith("http"):
-        # Try to construct URL from location
-        if "timeanddate.com" not in sun_url:
-            # Assume it's a location like "usa/new-york" or "40.7128,-74.0060"
-            sun_url = f"https://www.timeanddate.com/sun/{sun_url}"
-    
-    config["sun"]["URL"] = sun_url
-    
+        print("No coordinates set. Using manual sunrise/sunset times only.")
+
     print("")
-    print("Option 2: Manual times (used as fallback if URL unavailable)")
+    print("Fallback times (used if API is unavailable):")
     print("Enter times in 24-hour format (HH:MM:SS)")
     
     config["sun"]["SUNRISE"] = get_input_with_default("Manual sunrise time", "06:00:00")

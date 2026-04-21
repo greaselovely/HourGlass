@@ -31,10 +31,12 @@ def check_config_needs_setup(config):
     if not urls.get('WEBPAGE') or urls.get('WEBPAGE') == 'https://example.com' or urls.get('WEBPAGE') == '':
         critical_empty_fields.append('WEBPAGE')
     
-    # Check if sun URL is empty (optional but recommended)
+    # Check if sun coordinates are empty (optional but recommended)
     sun = config.get('sun', {})
-    if not sun.get('URL'):
-        critical_empty_fields.append('sun.URL (optional but recommended)')
+    if sun.get('lat') is None or sun.get('lng') is None:
+        # Also check for legacy URL that might have coords
+        if not sun.get('URL'):
+            critical_empty_fields.append('sun.lat/lng (optional but recommended)')
     
     return len(critical_empty_fields) > 0, critical_empty_fields
 
@@ -59,13 +61,15 @@ def import_dependencies(config_path=None):
         config = loaded_config
         
         # Update all the global variables from the loaded config
-        global SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD
+        global SUN_LAT, SUN_LNG, SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD
         global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
         global USER_AGENTS, PROXIES, PROJECT_NAME, VALID_IMAGES_FILE
         global VIDEO_FILENAME_FORMAT, LOGGING_FILE, NTFY_TOPIC, NTFY_URL, ALERTS_ENABLED
-        
+
         # Extract values from loaded config
-        SUN_URL = config.get('sun', {}).get('URL', '')
+        SUN_LAT = config.get('sun', {}).get('lat')
+        SUN_LNG = config.get('sun', {}).get('lng')
+        SUN_URL = config.get('sun', {}).get('URL', '')  # Legacy, kept for backward compat
         SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
         SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
         SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
@@ -114,7 +118,7 @@ def import_dependencies(config_path=None):
     
     # Variables to preserve (that we just set from the loaded config)
     preserve_vars = {
-        'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD',
+        'SUN_LAT', 'SUN_LNG', 'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD',
         'PROJECT_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER',
         'USER_AGENTS', 'PROXIES', 'PROJECT_NAME', 'VALID_IMAGES_FILE',
         'VIDEO_FILENAME_FORMAT', 'LOGGING_FILE', 'config',
@@ -1117,10 +1121,20 @@ def main():
         # ===== SUN SCHEDULE CALCULATION =====
         if not args.no_time_check:
             message_processor("Fetching sun schedule")
-            soup = sun_schedule(SUN_URL, USER_AGENTS)
 
-            sunrise_time = find_time_and_convert(soup, 'Sunrise Today:', SUNRISE)
-            sunset_time = find_time_and_convert(soup, 'Sunset Today:', SUNSET)
+            # Use lat/lng coordinates if available, otherwise fall back to URL
+            from lib.sun_schedule import get_sun_times
+            if SUN_LAT is not None and SUN_LNG is not None:
+                message_processor(f"Using coordinates: {SUN_LAT}, {SUN_LNG}")
+                sun_times = get_sun_times(SUN_LAT, SUN_LNG)
+            elif SUN_URL:
+                # Legacy: extract coords from URL
+                sun_times = sun_schedule(SUN_URL, USER_AGENTS)
+            else:
+                sun_times = None
+
+            sunrise_time = find_time_and_convert(sun_times, 'sunrise', SUNRISE)
+            sunset_time = find_time_and_convert(sun_times, 'sunset', SUNSET)
 
             now = datetime.now() + timedelta(hours=time_offset)
             sunrise_datetime = datetime.combine(now.date(), sunrise_time)

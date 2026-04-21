@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.2  # Multi-service notifications + status API
+CURRENT_VERSION = 2.3  # Sunrise-sunset.org API with lat/lng coordinates
 
 def setup_logging(config):
     """
@@ -108,6 +108,108 @@ def _migrate_alerts_to_services(config):
     }
     config['alerts'] = alerts
     logging.info(f"Migrated alerts config to services structure (ntfy topic: {old_topic!r})")
+    return config
+
+
+def _migrate_sun_url_to_coords(config):
+    """
+    Migrate legacy sun.URL to sun.lat/sun.lng coordinates.
+
+    Extracts coordinates from timeanddate.com or Google Maps URLs that contain
+    @lat,lng or ?q=lat,lng patterns. If extraction fails and running interactively,
+    prompts the user to enter coordinates.
+    """
+    sun = config.get('sun', {})
+
+    # Skip if already has valid coordinates
+    if sun.get('lat') is not None and sun.get('lng') is not None:
+        return config
+
+    url = sun.get('URL', '')
+    lat, lng = None, None
+
+    if url:
+        # Import here to avoid circular imports
+        from .sun_schedule import extract_coords_from_url
+        lat, lng = extract_coords_from_url(url)
+        if lat is not None and lng is not None:
+            sun['lat'] = lat
+            sun['lng'] = lng
+            config['sun'] = sun
+            config.setdefault('_config_updates', []).append(
+                f'Migrated sun URL to coordinates: {lat}, {lng}'
+            )
+            logging.info(f"Migrated sun URL to coordinates: lat={lat}, lng={lng}")
+            return config
+
+    # If we have a URL but couldn't extract coords, or no URL at all,
+    # prompt user if running interactively, or warn if non-interactive
+    if not sys.stdin.isatty():
+        # Non-interactive (cron) - add warning to trigger notification
+        if url:
+            config.setdefault('_config_updates', []).append(
+                f'WARNING: Could not extract coordinates from sun URL. Using manual SUNRISE/SUNSET times. '
+                f'Run interactively to set coordinates: python main.py <project>'
+            )
+            logging.warning(f"Could not extract coordinates from sun URL: {url}")
+        return config
+
+    if sys.stdin.isatty():
+        print("\n" + "=" * 60)
+        print(" Sun Location Setup Required")
+        print("=" * 60)
+        if url:
+            print(f"\nCould not extract coordinates from URL:\n  {url}")
+        else:
+            print("\nNo sun location configured.")
+        print("\nHourGlass needs coordinates for automatic sunrise/sunset times.")
+        print("You can enter:")
+        print("  - Coordinates directly: 34.0788, -107.6166")
+        print("  - A Google Maps URL")
+        print("  - Press Enter to skip (will use manual SUNRISE/SUNSET times)")
+        print("")
+
+        from .sun_schedule import extract_coords_from_url
+        import re
+
+        while True:
+            user_input = input("Location: ").strip()
+
+            if not user_input:
+                print("Skipping - will use manual sunrise/sunset times.")
+                config.setdefault('_config_updates', []).append(
+                    'WARNING: No sun coordinates - using manual SUNRISE/SUNSET times'
+                )
+                break
+
+            # Try URL first
+            if user_input.startswith('http'):
+                lat, lng = extract_coords_from_url(user_input)
+            else:
+                # Try direct coordinates
+                coord_match = re.match(r'^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$', user_input)
+                if coord_match:
+                    try:
+                        lat = float(coord_match.group(1))
+                        lng = float(coord_match.group(2))
+                        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                            lat, lng = None, None
+                    except ValueError:
+                        pass
+
+            if lat is not None and lng is not None:
+                sun['lat'] = lat
+                sun['lng'] = lng
+                config['sun'] = sun
+                config.setdefault('_config_updates', []).append(
+                    f'Added sun coordinates: {lat}, {lng}'
+                )
+                print(f"Location set: {lat}, {lng}")
+                logging.info(f"User entered sun coordinates: lat={lat}, lng={lng}")
+                break
+            else:
+                print("Could not parse coordinates. Try again or press Enter to skip.")
+
     return config
 
 # Set up logging with default values before loading config
@@ -309,11 +411,13 @@ def load_config(config_path=None):
                 "repeated_hash_count": 0
             },
             "sun": {
+                "lat": None,
+                "lng": None,
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
                 "SUNSET_TIME_ADD": 60,
                 "TIME_OFFSET_HOURS": 0,
-                "URL": ""
+                "URL": ""  # Legacy field, kept for backward compatibility
             },
             "files_and_folders": {
                 "LOG_FILE_NAME": "timelapse.log",
@@ -440,6 +544,9 @@ def load_config(config_path=None):
         # Migrate old flat alerts.ntfy → alerts.services.ntfy
         config = _migrate_alerts_to_services(config)
 
+        # Migrate old sun.URL → sun.lat/sun.lng
+        config = _migrate_sun_url_to_coords(config)
+
         # Clean up deprecated fields
         config = cleanup_deprecated_fields(config)
 
@@ -507,10 +614,12 @@ VIDEO_FILENAME_FORMAT = 'default.%m%d%Y.mp4'
 PROXIES = {}
 
 # Sun/time settings
+SUN_LAT = None
+SUN_LNG = None
 SUNRISE = '06:00:00'
 SUNSET = '19:00:00'
 SUNSET_TIME_ADD = 60
-SUN_URL = ''
+SUN_URL = ''  # Legacy, kept for backward compatibility
 TIME_OFFSET_HOURS = 0
 
 # File and folder settings

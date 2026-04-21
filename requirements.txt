@@ -13,6 +13,7 @@ proglog==0.1.12
 protobuf>=3.19.5,<5.0.0
 psutil==7.0.0
 Requests
+python-dateutil>=2.8.0
 wurlitzer==3.0.3
 edge-tts
 Requests[socks]

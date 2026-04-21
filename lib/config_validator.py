@@ -182,9 +182,27 @@ class ConfigValidator:
         """Validate sun-related settings."""
         if 'sun' not in config:
             return
-            
+
         sun_config = config['sun']
-        
+
+        # Validate coordinates if present
+        lat = sun_config.get('lat')
+        lng = sun_config.get('lng')
+
+        if lat is not None:
+            if not isinstance(lat, (int, float)) or lat < -90 or lat > 90:
+                self.validation_errors.append(f"Invalid latitude: {lat}. Must be between -90 and 90")
+
+        if lng is not None:
+            if not isinstance(lng, (int, float)) or lng < -180 or lng > 180:
+                self.validation_errors.append(f"Invalid longitude: {lng}. Must be between -180 and 180")
+
+        # Warn if no coordinates configured
+        if lat is None or lng is None:
+            # Check if there's a legacy URL that might work
+            if not sun_config.get('URL'):
+                self.validation_warnings.append("No sun coordinates (lat/lng) configured. Using manual sunrise/sunset times.")
+
         # Validate time formats
         time_fields = ['SUNRISE', 'SUNSET']
         for field in time_fields:
@@ -193,7 +211,7 @@ class ConfigValidator:
                     datetime.strptime(sun_config[field], '%H:%M:%S')
                 except ValueError:
                     self.validation_errors.append(f"Invalid time format for {field}: {sun_config[field]}. Expected HH:MM:SS")
-                    
+
         # Validate sunset time add
         if 'SUNSET_TIME_ADD' in sun_config:
             sunset_add = sun_config['SUNSET_TIME_ADD']
@@ -274,13 +292,13 @@ class ConfigValidator:
     def _check_network_health(self, config):
         """Check network connectivity to configured URLs."""
         urls_to_check = {}
-        
+
         if 'urls' in config:
             urls_to_check.update(config['urls'])
-            
-        if 'sun' in config and 'URL' in config['sun']:
-            urls_to_check['SUN_URL'] = config['sun']['URL']
-            
+
+        # Note: We no longer check sun.URL since we use sunrise-sunset.org API
+        # which is very reliable. The API is tested at runtime if coordinates are set.
+
         for url_key, url_value in urls_to_check.items():
             if not url_value:
                 continue

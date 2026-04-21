@@ -123,6 +123,46 @@ Each project has its own configuration file in `configs/<project_name>.json`. Ke
 - **Alert settings:** ntfy.sh integration for notifications
 - **Audio settings:** Background music configuration
 
+### Sunrise/Sunset Configuration
+
+HourGlass automatically fetches sunrise and sunset times based on your webcam's location coordinates using the [sunrise-sunset.org](https://sunrise-sunset.org/api) API (no API key required).
+
+**Setting up coordinates:**
+
+During setup, you can provide location in several ways:
+- **Direct coordinates:** Enter latitude and longitude (e.g., `34.0788, -107.6166`)
+- **Google Maps URL:** Copy a Google Maps link - coordinates will be extracted automatically
+- **Legacy timeanddate.com URL:** For existing users with URL-based configs
+
+**Finding your coordinates:**
+1. Go to [Google Maps](https://maps.google.com)
+2. Right-click on the webcam location
+3. Click "What's here?" to see coordinates
+4. Or use [latlong.net](https://www.latlong.net/) to look up any location
+
+**Configuration fields:**
+```json
+"sun": {
+    "lat": 34.0788,
+    "lng": -107.6166,
+    "SUNRISE": "06:00:00",
+    "SUNSET": "19:00:00",
+    "SUNSET_TIME_ADD": 60,
+    "TIME_OFFSET_HOURS": 0
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `lat` | Latitude coordinate (-90 to 90) |
+| `lng` | Longitude coordinate (-180 to 180) |
+| `SUNRISE` | Fallback sunrise time if API unavailable |
+| `SUNSET` | Fallback sunset time if API unavailable |
+| `SUNSET_TIME_ADD` | Minutes to continue capture after sunset |
+| `TIME_OFFSET_HOURS` | Timezone offset from server to webcam location |
+
+**Migration:** Existing configs with timeanddate.com URLs containing `@lat,lng` will be automatically migrated to use coordinates on next run.
+
 ## Managing Multiple Projects
 
 ### List Projects
