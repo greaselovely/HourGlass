@@ -186,22 +186,22 @@ class ConfigValidator:
         sun_config = config['sun']
 
         # Validate coordinates if present
-        lat = sun_config.get('lat')
-        lng = sun_config.get('lng')
+        lat = sun_config.get('LAT')
+        lng = sun_config.get('LNG')
 
         if lat is not None:
             if not isinstance(lat, (int, float)) or lat < -90 or lat > 90:
-                self.validation_errors.append(f"Invalid latitude: {lat}. Must be between -90 and 90")
+                self.validation_errors.append(f"Invalid LAT: {lat}. Must be between -90 and 90")
 
         if lng is not None:
             if not isinstance(lng, (int, float)) or lng < -180 or lng > 180:
-                self.validation_errors.append(f"Invalid longitude: {lng}. Must be between -180 and 180")
+                self.validation_errors.append(f"Invalid LNG: {lng}. Must be between -180 and 180")
 
         # Warn if no coordinates configured
         if lat is None or lng is None:
             # Check if there's a legacy URL that might work
             if not sun_config.get('URL'):
-                self.validation_warnings.append("No sun coordinates (lat/lng) configured. Using manual sunrise/sunset times.")
+                self.validation_warnings.append("No sun coordinates (LAT/LNG) configured. Using manual sunrise/sunset times.")
 
         # Validate time formats
         time_fields = ['SUNRISE', 'SUNSET']

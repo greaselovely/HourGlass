@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.3  # Sunrise-sunset.org API with lat/lng coordinates
+CURRENT_VERSION = 2.4  # Sunrise-sunset.org API with LAT/LNG coordinates (uppercase)
 
 def setup_logging(config):
     """
@@ -122,7 +122,27 @@ def _migrate_sun_url_to_coords(config):
     sun = config.get('sun', {})
 
     # Skip if already has valid coordinates
+    # Check for uppercase LAT/LNG first (current format)
+    if sun.get('LAT') is not None and sun.get('LNG') is not None:
+        # Clean up legacy URL if still present
+        if sun.get('URL'):
+            sun['URL'] = ''
+            config['sun'] = sun
+            config.setdefault('_config_updates', []).append(
+                'Cleaned up legacy sun URL (using LAT/LNG coordinates)'
+            )
+        return config
+
+    # Migrate lowercase lat/lng to uppercase LAT/LNG (v2.3 -> v2.4)
     if sun.get('lat') is not None and sun.get('lng') is not None:
+        sun['LAT'] = sun.pop('lat')
+        sun['LNG'] = sun.pop('lng')
+        sun['URL'] = ''  # Clean up legacy URL
+        config['sun'] = sun
+        config.setdefault('_config_updates', []).append(
+            f"Migrated sun.lat/lng to sun.LAT/LNG: {sun['LAT']}, {sun['LNG']}"
+        )
+        logging.info(f"Migrated sun.lat/lng to uppercase LAT/LNG")
         return config
 
     url = sun.get('URL', '')
@@ -133,13 +153,14 @@ def _migrate_sun_url_to_coords(config):
         from .sun_schedule import extract_coords_from_url
         lat, lng = extract_coords_from_url(url)
         if lat is not None and lng is not None:
-            sun['lat'] = lat
-            sun['lng'] = lng
+            sun['LAT'] = lat
+            sun['LNG'] = lng
+            sun['URL'] = ''  # Clear legacy URL after successful migration
             config['sun'] = sun
             config.setdefault('_config_updates', []).append(
                 f'Migrated sun URL to coordinates: {lat}, {lng}'
             )
-            logging.info(f"Migrated sun URL to coordinates: lat={lat}, lng={lng}")
+            logging.info(f"Migrated sun URL to LAT/LNG: {lat}, {lng}")
             return config
 
     # If we have a URL but couldn't extract coords, or no URL at all,
@@ -198,14 +219,15 @@ def _migrate_sun_url_to_coords(config):
                         pass
 
             if lat is not None and lng is not None:
-                sun['lat'] = lat
-                sun['lng'] = lng
+                sun['LAT'] = lat
+                sun['LNG'] = lng
+                sun['URL'] = ''  # Clear legacy URL
                 config['sun'] = sun
                 config.setdefault('_config_updates', []).append(
                     f'Added sun coordinates: {lat}, {lng}'
                 )
                 print(f"Location set: {lat}, {lng}")
-                logging.info(f"User entered sun coordinates: lat={lat}, lng={lng}")
+                logging.info(f"User entered sun coordinates: LAT={lat}, LNG={lng}")
                 break
             else:
                 print("Could not parse coordinates. Try again or press Enter to skip.")
@@ -411,8 +433,8 @@ def load_config(config_path=None):
                 "repeated_hash_count": 0
             },
             "sun": {
-                "lat": None,
-                "lng": None,
+                "LAT": None,
+                "LNG": None,
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
                 "SUNSET_TIME_ADD": 60,

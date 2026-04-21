@@ -254,8 +254,8 @@ def create_initial_config(existing_config=None, project_name=None):
     print("")
 
     # Check for existing coordinates or URL
-    current_lat = config.get("sun", {}).get("lat")
-    current_lng = config.get("sun", {}).get("lng")
+    current_lat = config.get("sun", {}).get("LAT")
+    current_lng = config.get("sun", {}).get("LNG")
     current_sun_url = config.get("sun", {}).get("URL", "")
 
     # Display current location if available
@@ -295,8 +295,8 @@ def create_initial_config(existing_config=None, project_name=None):
                 break
 
     # Store coordinates
-    config["sun"]["lat"] = lat
-    config["sun"]["lng"] = lng
+    config["sun"]["LAT"] = lat
+    config["sun"]["LNG"] = lng
     # Keep URL empty for new configs (legacy field)
     config["sun"]["URL"] = ""
 

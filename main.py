@@ -33,10 +33,10 @@ def check_config_needs_setup(config):
     
     # Check if sun coordinates are empty (optional but recommended)
     sun = config.get('sun', {})
-    if sun.get('lat') is None or sun.get('lng') is None:
+    if sun.get('LAT') is None or sun.get('LNG') is None:
         # Also check for legacy URL that might have coords
         if not sun.get('URL'):
-            critical_empty_fields.append('sun.lat/lng (optional but recommended)')
+            critical_empty_fields.append('sun.LAT/LNG (optional but recommended)')
     
     return len(critical_empty_fields) > 0, critical_empty_fields
 
@@ -67,8 +67,8 @@ def import_dependencies(config_path=None):
         global VIDEO_FILENAME_FORMAT, LOGGING_FILE, NTFY_TOPIC, NTFY_URL, ALERTS_ENABLED
 
         # Extract values from loaded config
-        SUN_LAT = config.get('sun', {}).get('lat')
-        SUN_LNG = config.get('sun', {}).get('lng')
+        SUN_LAT = config.get('sun', {}).get('LAT')
+        SUN_LNG = config.get('sun', {}).get('LNG')
         SUN_URL = config.get('sun', {}).get('URL', '')  # Legacy, kept for backward compat
         SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
         SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
@@ -802,9 +802,40 @@ def main():
                        help="Generate test images and compile video (tests full pipeline without image downloads)")
     parser.add_argument("--notifications", action="store_true",
                        help="Interactive wizard to configure notification services (ntfy, Pushover)")
+    parser.add_argument("-u", "--update", action="store_true",
+                       help="Run config migrations/updates and exit (no capture)")
     args = parser.parse_args()
     
     # ===== STANDALONE MODES (run before full app init) =====
+    # Handle --update to just run migrations and exit
+    if args.update:
+        if args.project is None:
+            print("Usage: python main.py <project> --update")
+            sys.exit(1)
+        config_path = f"configs/{args.project}.json"
+        if not os.path.exists(config_path):
+            print(f"Config not found: {config_path}")
+            sys.exit(1)
+        from lib.timelapse_config import load_config
+        print(f"Loading and updating config: {config_path}")
+        config = load_config(config_path)
+        if config:
+            updates = config.pop('_config_updates', [])
+            if updates:
+                print("Updates applied:")
+                for u in updates:
+                    print(f"  - {u}")
+            else:
+                print("No updates needed.")
+            # Show sun config
+            sun = config.get('sun', {})
+            print(f"\nSun configuration:")
+            print(f"  LAT: {sun.get('LAT')}")
+            print(f"  LNG: {sun.get('LNG')}")
+            print(f"  SUNRISE: {sun.get('SUNRISE')}")
+            print(f"  SUNSET: {sun.get('SUNSET')}")
+        sys.exit(0)
+
     # Handle --notifications wizard early — skip all other setup
     if args.notifications:
         if args.project is None:
