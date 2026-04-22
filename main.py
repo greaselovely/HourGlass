@@ -734,7 +734,9 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                     cleanup(run_audio_folder)
                 
                 message_processor("Main sequence completed successfully", notify=True)
-                write_status(PROJECT_BASE, PROJECT_NAME, "idle", detail="Completed")
+                write_status(PROJECT_BASE, PROJECT_NAME, "idle", detail="Completed",
+                             video_filename=video_path.split('/')[-1],
+                             video_size_mb=round(video_size_mb, 1))
                 
             except Exception as cleanup_error:
                 cleanup_error_message = f"Error during cleanup: {str(cleanup_error)}"
