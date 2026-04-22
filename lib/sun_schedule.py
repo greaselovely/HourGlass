@@ -129,8 +129,12 @@ def get_sun_times(lat, lng, date=None, tzid=None):
         for field in time_fields:
             if field in results and results[field]:
                 try:
-                    # Parse ISO 8601 datetime string
+                    # Parse ISO 8601 datetime string (UTC when tzid is not set)
+                    # and convert to system local time so comparisons against
+                    # datetime.now() work correctly.
                     dt = dateutil_parser.isoparse(results[field])
+                    if dt.tzinfo is not None and not tzid:
+                        dt = dt.astimezone()
                     sun_times[field] = dt.time()
                 except (ValueError, TypeError):
                     pass
