@@ -160,7 +160,7 @@ def poll_for_video(api_url, date_str, max_attempts=60, interval=60):
                 log(f"Status is idle/Completed with today's file: {filename}")
                 return filename
             # No filename or stale filename — stop polling, let caller try HEAD resolution
-            log(f"Status is idle/Completed but file '{filename}' doesn't match today ({date_str}). Falling through to file resolution.")
+            log(f"Status is idle/Completed, no filename from API. Falling through to file resolution.")
             return None
 
         log(f"State: {state or 'unknown'} (attempt {attempt}/{max_attempts}). Waiting {interval}s...")
