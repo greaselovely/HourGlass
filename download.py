@@ -305,6 +305,21 @@ def main():
 
     base_url = f"http://{ts_ip}:{port}"
     api_url = f"{base_url}/status/{args.project}"
+    fallback_cmd = config.get("status_api", {}).get("fallback_command", "")
+
+    # Quick reachability check — run fallback command if API is down
+    if not api_get(api_url):
+        if fallback_cmd:
+            log(f"API unreachable, running fallback command...")
+            try:
+                subprocess.run(fallback_cmd, shell=True, timeout=120)
+                time.sleep(5)
+            except subprocess.TimeoutExpired:
+                log("Fallback command timed out")
+            except Exception as e:
+                log(f"Fallback command failed: {e}")
+        else:
+            log("API unreachable and no fallback_command configured.")
 
     date_str = resolve_date(args.date, args.offset, args.yesterday)
     filename = f"{args.project}.{date_str}.mp4"
@@ -322,7 +337,10 @@ def main():
     log(f"Project: {args.project}")
     log(f"Target date: {date_str}")
 
-    if not args.force:
+    target_date = datetime.strptime(date_str, "%m%d%Y").date()
+    is_past_date = target_date < datetime.now().date()
+
+    if not args.force and not is_past_date:
         # Cron path: smart wait -> poll -> download
         end_time = get_end_time(api_url)
         if end_time:
@@ -342,8 +360,10 @@ def main():
         result = poll_for_video(api_url, date_str)
         if result:
             filename = result
-    else:
+    elif args.force:
         log("Force mode: skipping smart wait and polling.")
+    else:
+        log("Target date is in the past, skipping wait and poll.")
 
     # Resolve filename if we don't have one from polling (or force mode)
     if filename == f"{args.project}.{date_str}.mp4":
