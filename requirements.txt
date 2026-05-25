@@ -20,6 +20,7 @@ Requests[socks]>=2.33.0
 
 # Transitive pins (security fixes)
 aiohttp>=3.13.4
+idna>=3.15
 pyasn1>=0.6.3
 urllib3>=2.6.3
 
