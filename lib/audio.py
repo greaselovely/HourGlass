@@ -651,12 +651,11 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
             total_pages = initial_data.get('page', {}).get('pages', 1)
             message_processor(f"Found {total_pages} pages of music available", "info")
 
-            # Step 3: Select a random page
-            # Pixabay's search backend caps deep paging at offset 6000 (page 301 = the last
-            # reachable page; page 302+ silently redirects to page 1). Rolling past that made
-            # ~70% of picks bounce to page 1's same 20 songs -> chronic "0 available". Cap the
-            # roll one page under the ceiling. See pix_ceiling.py for how this was pinned.
-            MAX_REACHABLE_PAGE = 300  # offset 5980, safely under the 6000-result (page 301) limit
+            # Step 3: Select a random page.
+            # Although the catalog reports far more pages, only the first 300 return
+            # usable results; higher pages resolve back to page 1. Cap the random
+            # selection at 300 so we don't keep landing on pages that repeat page 1.
+            MAX_REACHABLE_PAGE = 300
             selected_page = choice(range(1, min(total_pages + 1, MAX_REACHABLE_PAGE + 1)))
 
             # Step 4: If not page 1, fetch the selected page
