@@ -6,10 +6,21 @@
 # (non-interactive + detached, same log). Capture resumes today's existing image
 # folder, so restarting mid-day does NOT lose already-captured frames.
 #
-# Usage: ./restart.sh [PROJECT]      (default: VLA)
+# Usage: ./restart.sh [PROJECT] [--no-service]   (PROJECT default: VLA)
+#   --no-service   skip the sudo systemctl restart of the status API (bounce
+#                  only the capture; lets the script run without sudo)
 set -euo pipefail
 
-PROJECT="${1:-VLA}"
+PROJECT="VLA"
+NO_SERVICE=0
+for arg in "$@"; do
+    case "$arg" in
+        --no-service) NO_SERVICE=1 ;;
+        -*) echo "Unknown option: $arg" >&2; exit 1 ;;
+        *)  PROJECT="$arg" ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRON_LOG="${HOME}/hourglass_cron.log"          # same log the 05:00 cron writes to
 STATUS_UNIT="hourglass-status"                 # system service (see setup.sh)
@@ -45,7 +56,9 @@ fi
 
 # 3) Restart the status API systemd service. Non-fatal: a sudo hiccup must not
 #    leave capture dead, so we warn and continue to step 4 regardless.
-if systemctl list-unit-files 2>/dev/null | grep -q "^${STATUS_UNIT}\.service"; then
+if [[ "$NO_SERVICE" -eq 1 ]]; then
+    echo "[*] Skipping status service restart (--no-service)"
+elif systemctl list-unit-files 2>/dev/null | grep -q "^${STATUS_UNIT}\.service"; then
     echo "[*] Restarting ${STATUS_UNIT} service (sudo)"
     sudo systemctl restart "${STATUS_UNIT}" \
         || echo "[!] Failed to restart ${STATUS_UNIT} (sudo?) — continuing"

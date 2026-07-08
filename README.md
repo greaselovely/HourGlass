@@ -68,13 +68,24 @@ python main.py <project_name>
 python main.py <project_name> --no-time-check
 ```
 
-### 3. Create Video Only
+### 3. Restart a Running Project
+```bash
+# Cleanly restart: kill the capture tmux session, restart the status API
+# service, then relaunch capture the way cron does. Capture resumes today's
+# existing image folder, so restarting mid-day does not lose frames.
+./restart.sh <project_name>
+
+# Bounce only the capture — skip the (sudo) status-service restart
+./restart.sh <project_name> --no-service
+```
+
+### 4. Create Video Only
 ```bash
 # Generate video from existing images
 python main.py <project_name> --movie
 ```
 
-### 4. Test Compilation Pipeline
+### 5. Test Compilation Pipeline
 ```bash
 # Generate test images and run full video compilation without real captures
 python main.py <project_name> --test-compile
@@ -85,6 +96,8 @@ python main.py <project_name> --test-compile
 ```
 HourGlass/
 ├── main.py                 # Main entry point
+├── hourglass.sh            # Capture launcher (tmux session; run by cron)
+├── restart.sh              # Cleanly restart capture + status API service
 ├── status_api.py           # Status + video download API (runs on server)
 ├── download.py             # Video download client (runs locally via cron)
 ├── lib/                    # Library modules
