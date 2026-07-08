@@ -640,6 +640,12 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
         # Create time-lapse video
         message_processor("Creating Time-Lapse Video")
 
+        # Silence CPU/memory health alerts during compilation — ffmpeg pegs both
+        # by design, so those alerts are noise, not signal.
+        _hm = globals().get('health_monitor')
+        if _hm:
+            _hm.set_video_compiling(True)
+
         try:
             logger = CustomLogger()
 
@@ -704,6 +710,10 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
             message_processor(f"Error in video creation: {e}", "error", notify=True)
             write_status(PROJECT_BASE, PROJECT_NAME, "error", detail=str(e))
             video_metrics = {'duration_seconds': 0, 'memory_change_mb': 0}
+        finally:
+            # Re-enable CPU/memory alerts now that compilation is done.
+            if _hm:
+                _hm.set_video_compiling(False)
 
         # Check if video was created successfully
         if os.path.exists(video_path):

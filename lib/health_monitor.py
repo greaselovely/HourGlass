@@ -66,7 +66,18 @@ class HealthMonitor:
         
         # Alert tracking
         self.last_alerts = {}
-        self.alert_cooldown = 1800  # 30 minutes between same alerts
+        self.alert_cooldown = 1800  # default: 30 minutes between same alerts
+        # Per-metric cooldown overrides (seconds). Disk is slow-moving — a single
+        # low-disk alert per run/day is plenty, not one every 30 minutes.
+        self.alert_cooldowns = {
+            'disk_free_space': 86400,
+            'disk_usage_percent': 86400,
+        }
+
+        # While a video is compiling, ffmpeg pegs CPU/memory by design, so those
+        # alerts are noise. Toggled by main.py via set_video_compiling().
+        self.is_compiling_video = False
+        self._compile_suppressed = {'system_memory', 'cpu_usage'}
         
         # Performance tracking
         self.performance_stats = {
@@ -117,7 +128,11 @@ class HealthMonitor:
             logging.info("Health monitor: System entering sleep mode")
         else:
             logging.info("Health monitor: System waking from sleep mode")
-    
+
+    def set_video_compiling(self, is_compiling: bool):
+        """Suppress CPU/memory alerts during video compilation (expected load)."""
+        self.is_compiling_video = is_compiling
+
     def _monitoring_loop(self):
         """Main monitoring loop."""
         while self.running and not self.stop_event.is_set():
@@ -502,13 +517,18 @@ class HealthMonitor:
     
     def _send_alert(self, metric, severity):
         """Send alert for a metric."""
+        # Silence expected CPU/memory spikes while a video is compiling.
+        if self.is_compiling_video and metric['name'] in self._compile_suppressed:
+            return
+
         alert_key = f"{metric['name']}_{severity}"
         now = datetime.now()
-        
-        # Check cooldown
+
+        # Check cooldown (per-metric override if set, else the default)
+        cooldown = self.alert_cooldowns.get(metric['name'], self.alert_cooldown)
         if alert_key in self.last_alerts:
             time_since_last = (now - self.last_alerts[alert_key]).total_seconds()
-            if time_since_last < self.alert_cooldown:
+            if time_since_last < cooldown:
                 return  # Still in cooldown period
         
         # Send alert
