@@ -100,8 +100,8 @@ class TestGetSunTimes:
     """Tests for get_sun_times function."""
 
     @patch('lib.sun_schedule.requests.get')
-    def test_returns_sun_times_on_success(self, mock_get):
-        """Should return parsed sun times on successful API call."""
+    def test_returns_sun_times_on_success_mst(self, mock_get, denver_tz):
+        """Should convert UTC API times to local MST (UTC-7) in winter."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             'status': 'OK',
@@ -118,11 +118,53 @@ class TestGetSunTimes:
             result = get_sun_times(34.0788, -107.6166)
 
         assert result is not None
-        assert 'sunrise' in result
-        assert 'sunset' in result
-        assert result['sunrise'] == time(13, 30, 0)
-        assert result['sunset'] == time(0, 45, 0)
+        assert result['sunrise'] == time(6, 30, 0)
+        assert result['sunset'] == time(17, 45, 0)
+        assert result['solar_noon'] == time(12, 7, 30)
         assert result['day_length'] == 40500
+
+    @patch('lib.sun_schedule.requests.get')
+    def test_returns_sun_times_on_success_mdt(self, mock_get, denver_tz):
+        """Should convert UTC API times to local MDT (UTC-6) during DST."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'OK',
+            'results': {
+                'sunrise': '2025-07-15T11:52:00+00:00',
+                'sunset': '2025-07-16T02:18:00+00:00',
+                'solar_noon': '2025-07-15T19:05:00+00:00',
+                'day_length': 51960,
+            }
+        }
+        mock_get.return_value = mock_response
+
+        with patch('lib.sun_schedule.message_processor'):
+            result = get_sun_times(34.0788, -107.6166)
+
+        assert result is not None
+        assert result['sunrise'] == time(5, 52, 0)
+        assert result['sunset'] == time(20, 18, 0)
+        assert result['solar_noon'] == time(13, 5, 0)
+        assert result['day_length'] == 51960
+
+    @patch('lib.sun_schedule.requests.get')
+    def test_skips_local_conversion_when_tzid_given(self, mock_get, denver_tz):
+        """Should leave times as-returned when tzid is passed to the API."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'OK',
+            'results': {
+                'sunrise': '2025-01-15T06:30:00-07:00',
+                'sunset': '2025-01-15T17:45:00-07:00',
+            }
+        }
+        mock_get.return_value = mock_response
+
+        with patch('lib.sun_schedule.message_processor'):
+            result = get_sun_times(34.0788, -107.6166, tzid='America/Denver')
+
+        assert result['sunrise'] == time(6, 30, 0)
+        assert result['sunset'] == time(17, 45, 0)
 
     @patch('lib.sun_schedule.requests.get')
     def test_returns_none_on_api_error(self, mock_get):

@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.4  # Sunrise-sunset.org API with LAT/LNG coordinates (uppercase)
+CURRENT_VERSION = 2.5  # Add SUNRISE_TIME_SUBTRACT (start capture N minutes before sunrise)
 
 def setup_logging(config):
     """
@@ -437,6 +437,7 @@ def load_config(config_path=None):
                 "LNG": None,
                 "SUNRISE": "06:00:00",
                 "SUNSET": "19:00:00",
+                "SUNRISE_TIME_SUBTRACT": 60,
                 "SUNSET_TIME_ADD": 60,
                 "TIME_OFFSET_HOURS": 0,
                 "URL": ""  # Legacy field, kept for backward compatibility
@@ -640,6 +641,7 @@ SUN_LAT = None
 SUN_LNG = None
 SUNRISE = '06:00:00'
 SUNSET = '19:00:00'
+SUNRISE_TIME_SUBTRACT = 60
 SUNSET_TIME_ADD = 60
 SUN_URL = ''  # Legacy, kept for backward compatibility
 TIME_OFFSET_HOURS = 0

@@ -1,9 +1,30 @@
 """Shared fixtures for HourGlass tests."""
+import os
 import pytest
 import tempfile
 import shutil
+import time
 from pathlib import Path
 from PIL import Image
+
+
+@pytest.fixture
+def denver_tz():
+    """Pin the process timezone to America/Denver (MST in winter, MDT in summer).
+
+    Code that converts UTC to local time reads the system timezone, so tests
+    covering those conversions must pin it or they only pass on machines that
+    happen to be in the expected zone (the Linode server runs UTC).
+    """
+    original = os.environ.get('TZ')
+    os.environ['TZ'] = 'America/Denver'
+    time.tzset()
+    yield
+    if original is None:
+        os.environ.pop('TZ', None)
+    else:
+        os.environ['TZ'] = original
+    time.tzset()
 
 
 @pytest.fixture
@@ -36,6 +57,7 @@ def sample_config():
             'URL': 'https://example.com/sun',
             'SUNRISE': '06:00:00',
             'SUNSET': '18:00:00',
+            'SUNRISE_TIME_SUBTRACT': 30,
             'SUNSET_TIME_ADD': 30
         },
         'alerts': {

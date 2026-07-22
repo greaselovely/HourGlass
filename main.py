@@ -61,7 +61,7 @@ def import_dependencies(config_path=None):
         config = loaded_config
         
         # Update all the global variables from the loaded config
-        global SUN_LAT, SUN_LNG, SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD
+        global SUN_LAT, SUN_LNG, SUN_URL, IMAGE_URL, WEBPAGE, SUNRISE, SUNSET, SUNSET_TIME_ADD, SUNRISE_TIME_SUBTRACT
         global PROJECT_BASE, VIDEO_FOLDER, IMAGES_FOLDER, LOGGING_FOLDER, AUDIO_FOLDER
         global USER_AGENTS, PROXIES, PROJECT_NAME, VALID_IMAGES_FILE
         global VIDEO_FILENAME_FORMAT, LOGGING_FILE, NTFY_TOPIC, NTFY_URL, ALERTS_ENABLED
@@ -73,6 +73,7 @@ def import_dependencies(config_path=None):
         SUNRISE = config.get('sun', {}).get('SUNRISE', '06:00:00')
         SUNSET = config.get('sun', {}).get('SUNSET', '19:00:00')
         SUNSET_TIME_ADD = config.get('sun', {}).get('SUNSET_TIME_ADD', 60)
+        SUNRISE_TIME_SUBTRACT = config.get('sun', {}).get('SUNRISE_TIME_SUBTRACT', 60)
         IMAGE_URL = config.get('urls', {}).get('IMAGE_URL', '')
         WEBPAGE = config.get('urls', {}).get('WEBPAGE', '')
         
@@ -118,7 +119,7 @@ def import_dependencies(config_path=None):
     
     # Variables to preserve (that we just set from the loaded config)
     preserve_vars = {
-        'SUN_LAT', 'SUN_LNG', 'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD',
+        'SUN_LAT', 'SUN_LNG', 'SUN_URL', 'IMAGE_URL', 'WEBPAGE', 'SUNRISE', 'SUNSET', 'SUNSET_TIME_ADD', 'SUNRISE_TIME_SUBTRACT',
         'PROJECT_BASE', 'VIDEO_FOLDER', 'IMAGES_FOLDER', 'LOGGING_FOLDER', 'AUDIO_FOLDER',
         'USER_AGENTS', 'PROXIES', 'PROJECT_NAME', 'VALID_IMAGES_FILE',
         'VIDEO_FILENAME_FORMAT', 'LOGGING_FILE', 'config',
@@ -846,6 +847,8 @@ def main():
             print(f"  LNG: {sun.get('LNG')}")
             print(f"  SUNRISE: {sun.get('SUNRISE')}")
             print(f"  SUNSET: {sun.get('SUNSET')}")
+            print(f"  SUNRISE_TIME_SUBTRACT: {sun.get('SUNRISE_TIME_SUBTRACT')} min")
+            print(f"  SUNSET_TIME_ADD: {sun.get('SUNSET_TIME_ADD')} min")
         sys.exit(0)
 
     # Handle --notifications wizard early — skip all other setup
@@ -1181,6 +1184,7 @@ def main():
 
             now = datetime.now() + timedelta(hours=time_offset)
             sunrise_datetime = datetime.combine(now.date(), sunrise_time)
+            sunrise_datetime -= timedelta(minutes=SUNRISE_TIME_SUBTRACT)
             sunset_datetime = datetime.combine(now.date(), sunset_time)
             sunset_datetime += timedelta(minutes=SUNSET_TIME_ADD)
 
@@ -1195,7 +1199,7 @@ def main():
             if now < sunrise_datetime:
                 sleep_timer = int((sunrise_datetime - now).total_seconds())
                 sleep_hours, sleep_minutes = divmod(sleep_timer // 60, 60)
-                start_label = sunrise_time.strftime('%H:%M')
+                start_label = sunrise_datetime.strftime('%H:%M')
             else:
                 sleep_timer = 0
                 sleep_hours, sleep_minutes = 0, 0

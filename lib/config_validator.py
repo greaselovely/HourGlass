@@ -217,6 +217,12 @@ class ConfigValidator:
             sunset_add = sun_config['SUNSET_TIME_ADD']
             if not isinstance(sunset_add, (int, float)) or sunset_add < 0 or sunset_add > 300:
                 self.validation_warnings.append(f"SUNSET_TIME_ADD seems unusual: {sunset_add} minutes")
+
+        # Validate sunrise time subtract
+        if 'SUNRISE_TIME_SUBTRACT' in sun_config:
+            sunrise_sub = sun_config['SUNRISE_TIME_SUBTRACT']
+            if not isinstance(sunrise_sub, (int, float)) or sunrise_sub < 0 or sunrise_sub > 300:
+                self.validation_warnings.append(f"SUNRISE_TIME_SUBTRACT seems unusual: {sunrise_sub} minutes")
     
     def _validate_alert_settings(self, config):
         """Validate alert and notification settings."""
