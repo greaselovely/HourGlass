@@ -9,7 +9,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.5  # Add SUNRISE_TIME_SUBTRACT (start capture N minutes before sunrise)
+CURRENT_VERSION = 2.6  # Add tts_intro.daily_fact (NASA APOD + Claude one-liner)
 
 def setup_logging(config):
     """
@@ -467,9 +467,18 @@ def load_config(config_path=None):
                 "tts_intro": {
                     "enabled": False,
                     "engine": "edge",
-                    "voice": "en-US-AriaNeural",
+                    "voice": "en-US-AvaMultilingualNeural",
                     "rate": 150,
-                    "volume": 0.9
+                    "volume": 0.9,
+                    "daily_fact": {
+                        "enabled": False,
+                        "nasa_api_key": "",       # blank -> DEMO_KEY (30/hr, 50/day)
+                        "anthropic_api_key": "",  # blank -> ANTHROPIC_API_KEY env var
+                        "model": "claude-opus-5",
+                        "max_words": 30,
+                        "news_enabled": True,     # spaceflight-news segment before the NASA fact
+                        "pause_seconds": 3        # silence between each spoken segment
+                    }
                 }
             },
             "tmux": {

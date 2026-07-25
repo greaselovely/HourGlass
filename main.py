@@ -613,8 +613,19 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                 if TTS_INTRO_ENABLED:
                     # Get TTS text from project description
                     project_description = config.get('project', {}).get('description', '')
+                    pause_seconds = 0.0
                     if project_description:
                         tts_text = f"{project_description} for {{date}}"
+                        try:
+                            from lib.space_fact import get_daily_segments
+                            segments = get_daily_segments(config)
+                            if segments:
+                                # Title, [pause], news, [pause], NASA fact.
+                                fact_cfg = config['music']['tts_intro']['daily_fact']
+                                pause_seconds = fact_cfg.get('pause_seconds', 3)
+                                tts_text = [f"{tts_text}."] + segments
+                        except Exception as e:
+                            message_processor(f"Daily fact skipped: {e}", "warning")
                     else:
                         message_processor("Project description is empty - skipping TTS intro", "warning")
                         tts_text = None
@@ -625,7 +636,8 @@ def main_sequence(run_images_folder, video_path, run_audio_folder, run_valid_ima
                             tts_text,
                             tts_output,
                             rate=TTS_INTRO_RATE,
-                            volume=TTS_INTRO_VOLUME
+                            volume=TTS_INTRO_VOLUME,
+                            pause_seconds=pause_seconds
                         )
                         if tts_result:
                             tts_intro_path = tts_result

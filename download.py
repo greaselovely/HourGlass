@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +28,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 LOG_FILE = Path.home() / "v.log"
 LOG_MAX_SIZE = 1024 * 1024  # 1MB
 SAVE_BUFFER_MIN = 18  # 13 min avg save time + 5 min buffer
+
+# cron runs with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), so a bare
+# "ffprobe" lookup fails there even though it resolves fine in a login shell.
+FFPROBE_CANDIDATES = [
+    "/opt/homebrew/bin/ffprobe",  # Apple Silicon homebrew
+    "/usr/local/bin/ffprobe",     # Intel homebrew
+    "/usr/bin/ffprobe",           # Linux distro package
+]
 
 
 # ============================================================================
@@ -222,16 +231,32 @@ def try_download(base_url, project, filename, dest_dir):
     return download_video(base_url, project, filename, dest_dir)
 
 
+def find_ffprobe():
+    """Locate ffprobe, falling back to known install paths when PATH is minimal."""
+    found = shutil.which("ffprobe")
+    if found:
+        return found
+    for candidate in FFPROBE_CANDIDATES:
+        if os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def validate_video(filepath):
     """Validate with ffprobe. Returns duration string or None on failure."""
+    ffprobe = find_ffprobe()
+    if not ffprobe:
+        log("WARNING: ffprobe not found, skipping validation")
+        return "unknown"
+
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
              "-of", "csv=p=0", str(filepath)],
             capture_output=True, text=True, timeout=30)
         duration = result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        log("WARNING: ffprobe not found or timed out, skipping validation")
+        log("WARNING: ffprobe timed out, skipping validation")
         return "unknown"
 
     if not duration or duration in ("0", "0.000000", "N/A"):

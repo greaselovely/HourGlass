@@ -963,11 +963,48 @@ def audio_download(video_duration, AUDIO_FOLDER, debug=False, config=None) -> li
 # TTS (Text-to-Speech) Functions
 # ============================================================================
 
+def _concat_with_pause(segment_paths: list, output_path: Path, pause_seconds: float):
+    """
+    Join rendered segments into one file, inserting `pause_seconds` of silence
+    between each. Returns duration in seconds, or None on failure.
+    """
+    import numpy as np
+    from moviepy.audio.AudioClip import AudioArrayClip
+
+    opened, timeline = [], []
+    try:
+        for i, path in enumerate(segment_paths):
+            clip = AudioFileClip(str(path))
+            opened.append(clip)
+            if i and pause_seconds > 0:
+                channels = getattr(clip, 'nchannels', 2)
+                samples = int(clip.fps * pause_seconds)
+                timeline.append(
+                    AudioArrayClip(np.zeros((samples, channels)), fps=clip.fps))
+            timeline.append(clip)
+
+        final = concatenate_audioclips(timeline)
+        final.write_audiofile(str(output_path), fps=opened[0].fps, logger=None)
+        duration = final.duration
+        final.close()
+        return duration
+    except Exception as e:
+        message_processor(f"Failed to join TTS segments: {e}", "error")
+        return None
+    finally:
+        for clip in opened:
+            try:
+                clip.close()
+            except Exception:
+                pass
+
+
 def create_tts_intro(
-    text: str,
+    text,
     output_path: str | Path,
     rate: int = 150,
-    volume: float = 0.9
+    volume: float = 0.9,
+    pause_seconds: float = 0.0
 ) -> tuple[str | None, float | None]:
     """
     Creates a TTS (Text-to-Speech) audio file with random engine and voice.
@@ -976,19 +1013,27 @@ def create_tts_intro(
     Voice is randomly selected from a pool for variety across videos.
 
     Args:
-        text (str): The text to convert to speech. Can include {date} placeholder.
+        text (str | list[str]): Text to speak. Pass a list to split the narration
+            into segments separated by `pause_seconds` of silence. Every segment
+            is rendered with the same voice. May include the {date} placeholder.
         output_path (str or Path): Path where the TTS audio file will be saved.
         rate (int): Speech rate (words per minute). Default 150.
         volume (float): Volume level (0.0 to 1.0). Default 0.9.
+        pause_seconds (float): Silence inserted between segments. Ignored for a
+            single segment.
 
     Returns:
-        tuple: (audio_path, duration_seconds) or (None, None) if failed
+        tuple: (audio_path, duration_milliseconds) or (None, None) if failed
     """
     # Replace placeholders in text
     today = datetime.now().strftime("%B %d, %Y")  # e.g., "December 19, 2025"
-    narration_text = text.replace('{date}', today)
+    raw_segments = [text] if isinstance(text, str) else list(text)
+    segments = [s.replace('{date}', today) for s in raw_segments if s and s.strip()]
+    if not segments:
+        return None, None
 
-    message_processor(f"Generating TTS intro: \"{narration_text}\"", "info")
+    joiner = f" [{pause_seconds:g}s pause] " if len(segments) > 1 else " "
+    message_processor(f"Generating TTS intro: \"{joiner.join(segments)}\"", "info")
 
     # Save to file
     output_path = Path(output_path)
@@ -999,22 +1044,26 @@ def create_tts_intro(
     script_dir = Path(__file__).parent.parent
     credentials_path = script_dir / 'tts.json'
 
-    # Voice pools for each engine
+    # Voice pools for each engine — current-generation voices only.
+    # The older Edge voices (Aria/Guy/Jenny) and Google's Neural2 tier are
+    # noticeably robotic; the ones below are the newest, most natural tiers.
     edge_voices = [
-        'en-US-AriaNeural',
-        'en-US-JennyNeural',
-        'en-US-GuyNeural',
-        'en-US-ChristopherNeural',
-        'en-GB-SoniaNeural',
-        'en-GB-RyanNeural',
+        'en-US-AndrewMultilingualNeural',  # Male, warm
+        'en-US-AvaMultilingualNeural',     # Female, expressive
+        'en-US-BrianMultilingualNeural',   # Male, casual
+        'en-US-EmmaMultilingualNeural',    # Female, conversational
+        'en-US-AndrewNeural',
+        'en-US-AvaNeural',
+        'en-US-BrianNeural',
+        'en-US-EmmaNeural',
     ]
     google_voices = [
-        'en-US-Neural2-A',  # Male
-        'en-US-Neural2-C',  # Female
-        'en-US-Neural2-D',  # Male
-        'en-US-Neural2-E',  # Female
-        'en-US-Neural2-F',  # Female
-        'en-US-Neural2-J',  # Male
+        'en-US-Chirp3-HD-Achernar',   # Female
+        'en-US-Chirp3-HD-Charon',     # Male
+        'en-US-Chirp3-HD-Kore',       # Female
+        'en-US-Chirp3-HD-Puck',       # Male
+        'en-US-Chirp3-HD-Aoede',      # Female
+        'en-US-Chirp3-HD-Fenrir',     # Male
     ]
 
     # Check if Google is available (tts.json exists)
@@ -1026,37 +1075,52 @@ def create_tts_intro(
     else:
         use_google = False
 
+    # Ordered (engine, voice) attempts. Whichever engine is chosen first gets its
+    # voices tried before falling back to the other engine, and every segment of a
+    # given attempt uses that one voice so the narration doesn't switch mid-intro.
+    edge_attempts = [('edge', v) for v in random.sample(edge_voices, min(3, len(edge_voices)))]
+    google_attempts = ([('google', v) for v in random.sample(google_voices, min(2, len(google_voices)))]
+                       if google_available else [])
+    attempts = google_attempts + edge_attempts if use_google else edge_attempts + google_attempts
+
     result = (None, None)
 
-    if use_google:
-        voice = random.choice(google_voices)
-        result = _create_tts_google(narration_text, output_path, voice, rate)
-        if result[0] is None:
-            # Google failed, fall back to Edge with retries
-            message_processor("Google TTS failed, falling back to Edge TTS", "warning")
-            result = _create_tts_with_retry(
-                narration_text, output_path, edge_voices, rate, max_retries=3
-            )
-    else:
-        # Try Edge TTS with retries
-        result = _create_tts_with_retry(
-            narration_text, output_path, edge_voices, rate, max_retries=3
-        )
-        if result[0] is None and google_available:
-            # Edge failed, fall back to Google
-            message_processor("Edge TTS failed after retries, falling back to Google TTS", "warning")
-            voice = random.choice(google_voices)
-            result = _create_tts_google(narration_text, output_path, voice, rate)
+    for engine, voice in attempts:
+        render = _create_tts_google if engine == 'google' else _create_tts_edge
+
+        # Single segment: render straight to the destination, as before.
+        if len(segments) == 1:
+            result = render(segments[0], output_path, voice, rate)
+            if result[0] is not None:
+                return result
+            continue
+
+        # Multi-segment: render each part, then join with silence between.
+        part_paths, rendered_all = [], True
+        for i, segment in enumerate(segments):
+            part = output_path.with_name(f"{output_path.stem}_part{i}{output_path.suffix}")
+            if render(segment, part, voice, rate)[0] is None:
+                rendered_all = False
+                break
+            part_paths.append(part)
+
+        duration = _concat_with_pause(part_paths, output_path, pause_seconds) if rendered_all else None
+        for part in part_paths:
+            part.unlink(missing_ok=True)
+
+        if duration:
+            message_processor(
+                f"TTS intro created: {duration:.1f}s "
+                f"(including {pause_seconds:g}s pause)", "info")
+            return str(output_path), duration * 1000
 
     # If all TTS attempts failed, send ntfy alert
-    if result[0] is None:
-        message_processor(
-            "TTS generation failed completely - no voice intro will be added",
-            "error",
-            notify=True
-        )
-
-    return result
+    message_processor(
+        "TTS generation failed completely - no voice intro will be added",
+        "error",
+        notify=True
+    )
+    return (None, None)
 
 
 def _create_tts_with_retry(
@@ -1170,19 +1234,14 @@ def _create_tts_google(text: str, output_path: Path, voice: str, rate: int) -> t
         client = texttospeech.TextToSpeechClient()
         synthesis_input = texttospeech.SynthesisInput(text=text)
 
-        # Determine gender from voice name
-        if 'Female' in voice or voice.endswith(('C', 'E', 'F', 'G', 'H')):
-            ssml_gender = texttospeech.SsmlVoiceGender.FEMALE
-        else:
-            ssml_gender = texttospeech.SsmlVoiceGender.MALE
-
-        # Extract language code from voice name (e.g., 'en-US' from 'en-US-Neural2-F')
+        # Extract language code from voice name (e.g., 'en-US' from 'en-US-Chirp3-HD-Kore')
         language_code = '-'.join(voice.split('-')[:2]) if '-' in voice else 'en-US'
 
+        # No ssml_gender: `name` fully determines the voice, and Google rejects the
+        # request if a supplied gender disagrees with the named voice.
         voice_params = texttospeech.VoiceSelectionParams(
             language_code=language_code,
             name=voice,
-            ssml_gender=ssml_gender
         )
 
         speaking_rate = rate / 150.0
@@ -1222,7 +1281,7 @@ def combine_tts_with_music(
     tts_audio_path: str,
     music_audio: str | AudioFileClip,
     start_delay: float = 3,
-    duck_volume: float = 0.3,
+    duck_volume: float = 0.15,
     fade_duration: float = 1.5
 ) -> AudioFileClip:
     """
