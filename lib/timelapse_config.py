@@ -2,6 +2,7 @@
 
 import os
 import sys
+import copy
 import glob
 import json
 import logging
@@ -340,6 +341,11 @@ def load_config(config_path=None):
             del config['music']['preferred_genres']
             logging.info("Removed deprecated 'preferred_genres' from config")
 
+        # Runtime-only key that earlier versions leaked into the saved config
+        if '_config_updates' in config:
+            del config['_config_updates']
+            logging.info("Removed runtime '_config_updates' key from config")
+
         return config
 
     def expand_config_paths(config):
@@ -570,6 +576,10 @@ def load_config(config_path=None):
         with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
 
+        # Snapshot the file as it sits on disk so we only write back when a
+        # migration actually changed something.
+        original = copy.deepcopy(config)
+
         # Normalize paths to use ~ (for portability)
         config = normalize_paths(config)
 
@@ -593,10 +603,15 @@ def load_config(config_path=None):
             config['user_agents'] = default_config['user_agents']
             config_updates.append("user_agents updated to current browser versions")
 
-        # Write updated config back to file (with ~ paths for portability)
-        with open(CONFIG_PATH, 'w') as file:
-            json.dump(config, file, indent=2)
-        logging.info("Updated configuration written to file")
+        # Write back only if a migration changed something (with ~ paths for
+        # portability). Rewriting an unchanged config on every startup is pure
+        # churn and risks clobbering edits made since it was loaded.
+        if config != original:
+            with open(CONFIG_PATH, 'w') as file:
+                json.dump(config, file, indent=2)
+            logging.info("Updated configuration written to file")
+        else:
+            logging.debug("Configuration already current - no write needed")
 
         # Store config update reasons for ntfy notification after init
         config['_config_updates'] = config_updates

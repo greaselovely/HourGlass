@@ -1,6 +1,6 @@
 # image_downloader.py
 """
-Image downloading functionality with session recovery and batched config updates.
+Image downloading functionality with session recovery.
 """
 import os
 import json
@@ -17,11 +17,10 @@ from .utils import message_processor, create_session, log_jamming
 
 class ImageDownloader:
     """
-    Enhanced ImageDownloader with session recovery and batched config updates.
+    Enhanced ImageDownloader with session recovery.
 
     Improvements over original:
     - Automatic session recovery on failures
-    - Batched config writes to reduce I/O
     - Better error handling and logging
     - Exponential backoff for consecutive failures
     - Health monitoring integration
@@ -42,15 +41,13 @@ class ImageDownloader:
         self.session_failures = 0
         self.max_session_failures = 3
 
-        # Config batching
-        self.config_write_counter = 0
-        self.config_write_interval = 10  # Write config every 10 updates instead of every update
-
         # Initialize image tracking
         self.prev_image_filename = self.get_last_image_filename()
         self.prev_image_size = None
         self.prev_image_hash = self.get_last_image_hash()
-        self.repeated_hash_count = self.config['alerts'].get('repeated_hash_count', 0)
+        # Seeded from the config once at startup, then tracked purely in memory.
+        # Nothing here writes to the config file - it is user-owned input.
+        self.repeated_hash_count = self.config.get('alerts', {}).get('repeated_hash_count', 0)
 
         # Failure tracking for exponential backoff
         self.consecutive_failures = 0
@@ -97,35 +94,6 @@ class ImageDownloader:
             message_processor(f"Session recovery error: {e}", "error")
             self.session_failures += 1
             return False
-
-    def update_config(self, force_write=False):
-        """
-        Update config with batched writes to reduce I/O.
-        Only writes to disk every config_write_interval updates or when forced.
-        """
-        self.config_write_counter += 1
-
-        # Write to disk if interval reached, forced, or on significant milestones
-        escalation_points = self.config.get('alerts', {}).get('escalation_points', [10, 50, 100, 500])
-        should_write = (
-            force_write or
-            self.config_write_counter >= self.config_write_interval or
-            self.repeated_hash_count in escalation_points
-        )
-
-        if should_write:
-            try:
-                self.config['alerts']['repeated_hash_count'] = self.repeated_hash_count
-                # Use the config_path if provided, otherwise skip writing
-                if self.config_path:
-                    with open(self.config_path, 'w') as file:
-                        json.dump(self.config, file, indent=2)
-                    self.config_write_counter = 0  # Reset counter after write
-                # If no config_path, just reset counter without writing
-                else:
-                    self.config_write_counter = 0
-            except Exception as e:
-                message_processor(f"Failed to update config: {e}", "error")
 
     def calculate_backoff_delay(self):
         """Calculate exponential backoff delay based on consecutive failures."""
@@ -255,9 +223,6 @@ class ImageDownloader:
                         print_me=True
                     )
 
-                    # Update config (batched)
-                    self.update_config()
-
                     # Retry on first attempt
                     if attempt == 0:
                         self.consecutive_failures += 1
@@ -295,9 +260,6 @@ class ImageDownloader:
                     # Update health monitor stats if available
                     if self.health_monitor:
                         self.health_monitor.update_performance_stats('images_captured')
-
-                    # Update config (batched)
-                    self.update_config()
 
                     return image_size, filename
 
@@ -337,7 +299,3 @@ class ImageDownloader:
             'session_failures': self.session_failures,
             'repeated_hash_count': self.repeated_hash_count
         }
-
-    def __del__(self):
-        """Ensure config is written when object is destroyed."""
-        self.update_config(force_write=True)
