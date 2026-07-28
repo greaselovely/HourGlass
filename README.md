@@ -15,6 +15,7 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 - **Even Audio Distribution:** Songs split evenly across video with 5-second crossfades
 - **Song History Tracking:** 180-day history prevents song repetition across videos
 - **TTS Intro:** Random voice selection from Edge TTS (free) and Google Cloud TTS
+- **Daily Narration:** Optional spoken intro segments built from today's spaceflight news and NASA's Astronomy Picture of the Day
 
 ### Enhanced Capabilities
 - **Robust Error Handling:** Exponential backoff and automatic session recovery
@@ -110,6 +111,9 @@ HourGlass/
 │   ├── config_validator.py # Config validation
 │   ├── health_monitor.py   # System health monitoring
 │   ├── memory_optimizer.py # Memory management
+│   ├── image_downloader.py # Image capture, hashing, session recovery
+│   ├── audio.py            # TTS and background music
+│   ├── space_fact.py       # Daily narration segments (news + NASA APOD)
 │   └── ...
 ├── configs/                # Project configurations
 │   ├── project1.json
@@ -135,6 +139,8 @@ Each project has its own configuration file in `configs/<project_name>.json`. Ke
 - **Timezone offset:** For remote webcam locations
 - **Alert settings:** ntfy.sh integration for notifications
 - **Audio settings:** Background music configuration
+
+Changes take effect on restart (`./restart.sh <project_name>`).
 
 ### Sunrise/Sunset Configuration
 
@@ -175,6 +181,34 @@ During setup, you can provide location in several ways:
 | `TIME_OFFSET_HOURS` | Timezone offset from server to webcam location |
 
 **Migration:** Existing configs with timeanddate.com URLs containing `@lat,lng` will be automatically migrated to use coordinates on next run.
+
+### Daily Narration (TTS Intro)
+
+When `music.tts_intro.daily_fact.enabled` is true, the spoken intro adds up to two segments after the project title: today's top spaceflight news story, then a fact drawn from NASA's Astronomy Picture of the Day.
+
+```json
+"daily_fact": {
+    "enabled": true,
+    "nasa_api_key": "",
+    "anthropic_api_key": "",
+    "max_words": 30,
+    "news_enabled": true,
+    "pause_seconds": 3
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Master switch. When false the intro is just the project description |
+| `nasa_api_key` | api.nasa.gov key. Blank uses `DEMO_KEY` (30/hr, 50/day per IP). Free key at [api.nasa.gov](https://api.nasa.gov) |
+| `anthropic_api_key` | Blank falls back to the `ANTHROPIC_API_KEY` environment variable |
+| `max_words` | Word cap per spoken segment |
+| `news_enabled` | Include the spaceflight-news segment before the NASA fact |
+| `pause_seconds` | Silence inserted between spoken segments |
+
+If a source is unavailable that segment is skipped. If neither is reachable the intro is the project description alone. Results are cached per day in `cache/daily_fact.json`.
+
+A 403 response from api.nasa.gov indicates an invalid key; 429 indicates the rate limit.
 
 ## Managing Multiple Projects
 
@@ -280,6 +314,7 @@ python main.py <project_name> --debug
 2. **Session creation failed:** Check USER_AGENTS and PROXIES in config
 3. **Images not saving:** Verify the webcam URL is accessible
 4. **MJPEG streams:** The system automatically detects and handles MJPEG streams
+5. **Intro missing news/NASA segments:** Source APIs were unreachable. Check the log for `Fetch failed`
 
 ### Logs
 
