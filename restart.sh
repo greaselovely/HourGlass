@@ -58,7 +58,10 @@ fi
 #    leave capture dead, so we warn and continue to step 4 regardless.
 if [[ "$NO_SERVICE" -eq 1 ]]; then
     echo "[*] Skipping status service restart (--no-service)"
-elif systemctl list-unit-files 2>/dev/null | grep -q "^${STATUS_UNIT}\.service"; then
+# Queried directly rather than piping `list-unit-files` into `grep -q`: grep exits
+# at the first match, systemctl takes SIGPIPE writing the rest, and `pipefail`
+# then reports 141 for the whole pipeline — so an installed unit read as missing.
+elif [[ "$(systemctl show -p LoadState --value "${STATUS_UNIT}.service" 2>/dev/null)" == "loaded" ]]; then
     echo "[*] Restarting ${STATUS_UNIT} service (sudo)"
     sudo systemctl restart "${STATUS_UNIT}" \
         || echo "[!] Failed to restart ${STATUS_UNIT} (sudo?) — continuing"
