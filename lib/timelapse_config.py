@@ -10,7 +10,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.6  # Add tts_intro.daily_fact (NASA APOD + Claude one-liner)
+CURRENT_VERSION = 2.7  # daily_fact: rotating radio-astronomy sources replace spaceflight news
 
 def setup_logging(config):
     """
@@ -341,6 +341,14 @@ def load_config(config_path=None):
             del config['music']['preferred_genres']
             logging.info("Removed deprecated 'preferred_genres' from config")
 
+        # The spaceflight-news segment was replaced by the rotating radio
+        # astronomy sources, so this flag no longer controls anything.
+        daily_fact = (config.get('music', {})
+                      .get('tts_intro', {}).get('daily_fact', {}))
+        if 'news_enabled' in daily_fact:
+            del daily_fact['news_enabled']
+            logging.info("Removed deprecated 'news_enabled' from daily_fact")
+
         # Runtime-only key that earlier versions leaked into the saved config
         if '_config_updates' in config:
             del config['_config_updates']
@@ -482,7 +490,9 @@ def load_config(config_path=None):
                         "anthropic_api_key": "",  # blank -> ANTHROPIC_API_KEY env var
                         "model": "claude-opus-5",
                         "max_words": 30,
-                        "news_enabled": True,     # spaceflight-news segment before the NASA fact
+                        # Radio-astronomy segment before the NASA fact. One source
+                        # per day, rotating; a dud source hands off to the next.
+                        "sources": ["nrao", "config", "arxiv", "solar"],
                         "pause_seconds": 3        # silence between each spoken segment
                     }
                 }
@@ -595,6 +605,14 @@ def load_config(config_path=None):
         config_updates = []
 
         config = update_config(config)
+
+        # The TTS intro changes what it says out loud, so say why in the alert.
+        old_fact = original.get('music', {}).get('tts_intro', {}).get('daily_fact', {})
+        new_fact = config.get('music', {}).get('tts_intro', {}).get('daily_fact', {})
+        if 'news_enabled' in old_fact and new_fact.get('sources'):
+            config_updates.append(
+                "TTS intro now rotates radio-astronomy sources "
+                f"({', '.join(new_fact['sources'])}) instead of spaceflight news")
 
         # Always sync user agents from defaults so they don't go stale
         default_config = create_default_config()
