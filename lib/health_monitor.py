@@ -5,7 +5,8 @@ import psutil
 import requests
 import logging
 from typing import Dict, List
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timedelta
 from threading import Thread, Event
 from .timelapse_core import message_processor
 from dataclasses import dataclass, asdict
@@ -66,6 +67,8 @@ class HealthMonitor:
         
         # Alert tracking
         self.last_alerts = {}
+        # Metrics currently in an alerting state, so we can say "recovered" once.
+        self.active_alerts = {}
         self.alert_cooldown = 1800  # default: 30 minutes between same alerts
         # Per-metric cooldown overrides (seconds). Disk is slow-moving — a single
         # low-disk alert per run/day is plenty, not one every 30 minutes.
@@ -87,7 +90,15 @@ class HealthMonitor:
             'start_time': datetime.now(),
             'last_image_time': None
         }
-        
+
+        # Rolling window of recent capture attempts: (timestamp, is_error).
+        # The error rate is computed over this window rather than over the whole
+        # session, so a fixed problem stops alerting instead of slowly decaying
+        # below the threshold over the next several hours.
+        self.recent_attempts = deque()
+        self.error_window_seconds = 1800  # 30 minutes
+        self.min_window_attempts = 5      # need a real sample before judging
+
         # Sleep status tracking
         self.is_sleeping = False
     
@@ -125,6 +136,13 @@ class HealthMonitor:
         """Set whether the system is in sleep mode."""
         self.is_sleeping = is_sleeping
         if is_sleeping:
+            # Don't carry pre-sleep attempts into the next daylight window, and
+            # drop any open capture alert so we don't push an all-clear at dawn
+            # for something that stopped mattering at dusk. Log only, no notify.
+            self.recent_attempts.clear()
+            severity = self.active_alerts.pop('error_rate', None)
+            if severity:
+                self.last_alerts.pop(f"error_rate_{severity}", None)
             logging.info("Health monitor: System entering sleep mode")
         else:
             logging.info("Health monitor: System waking from sleep mode")
@@ -446,7 +464,7 @@ class HealthMonitor:
         return metrics
     
     def _check_capture_performance(self) -> List[HealthMetric]:
-        """Check image capture performance (error rate only)."""
+        """Check image capture performance (error rate over the recent window)."""
         metrics = []
 
         # Skip capture performance checks during sleep mode
@@ -454,31 +472,32 @@ class HealthMonitor:
             return metrics
 
         try:
-            uptime_hours = self._get_uptime_hours()
+            attempts, errors = self._recent_attempt_counts()
 
-            if uptime_hours > 0:
-                error_rate = 0
-                total_attempts = self.performance_stats['images_captured'] + self.performance_stats['errors_encountered']
-                if total_attempts > 0:
-                    error_rate = (self.performance_stats['errors_encountered'] / total_attempts) * 100
+            # Not enough recent activity to say anything meaningful.
+            if attempts < self.min_window_attempts:
+                return metrics
 
-                # Error rate check
-                if error_rate > self.thresholds['error_rate_percent']:
-                    status = 'warning'
-                    message = f"High error rate: {error_rate:.1f}%"
-                else:
-                    status = 'healthy'
-                    message = f"Error rate normal: {error_rate:.1f}%"
+            error_rate = (errors / attempts) * 100
+            window_minutes = self.error_window_seconds / 60
 
-                metrics.append(HealthMetric(
-                    name='error_rate',
-                    value=error_rate,
-                    threshold=self.thresholds['error_rate_percent'],
-                    status=status,
-                    message=message,
-                    timestamp=datetime.now(),
-                    unit='%'
-                ))
+            if error_rate > self.thresholds['error_rate_percent']:
+                status = 'warning'
+                message = (f"High error rate: {error_rate:.1f}% "
+                           f"({errors}/{attempts} in last {window_minutes:.0f}m)")
+            else:
+                status = 'healthy'
+                message = f"Error rate normal: {error_rate:.1f}%"
+
+            metrics.append(HealthMetric(
+                name='error_rate',
+                value=error_rate,
+                threshold=self.thresholds['error_rate_percent'],
+                status=status,
+                message=message,
+                timestamp=datetime.now(),
+                unit='%'
+            ))
 
         except Exception as e:
             metrics.append(HealthMetric(
@@ -510,7 +529,14 @@ class HealthMonitor:
         # Send warning alerts with cooldown
         for metric in warning_metrics:
             self._send_alert(metric, 'warning')
-        
+
+        # Anything that recovered gets a clean slate, so the next incident alerts
+        # immediately instead of waiting out a stale cooldown. Logged, not pushed —
+        # no news is good news.
+        healthy_names = {m['name'] for m in health_report['metrics'] if m['status'] == 'healthy'}
+        for name in healthy_names & set(self.active_alerts):
+            self._clear_alert(name, self.active_alerts.pop(name))
+
         # Log overall status
         if health_report['overall_status'] != 'healthy':
             logging.warning(f"Health check: {health_report['overall_status']} status detected")
@@ -539,10 +565,26 @@ class HealthMonitor:
                 notify=True
             )
             self.last_alerts[alert_key] = now
-            
+            self.active_alerts[metric['name']] = severity
+
         except Exception as e:
             logging.error(f"Failed to send health alert: {e}")
-    
+
+    def _clear_alert(self, metric_name, severity):
+        """Reset alert state when a previously alerting metric recovers (log only)."""
+        self.last_alerts.pop(f"{metric_name}_{severity}", None)
+        logging.info(f"Health recovered: {metric_name} back to normal")
+
+    def _recent_attempt_counts(self):
+        """Prune the attempt window and return (attempts, errors) within it."""
+        cutoff = datetime.now() - timedelta(seconds=self.error_window_seconds)
+        while self.recent_attempts and self.recent_attempts[0][0] < cutoff:
+            self.recent_attempts.popleft()
+
+        attempts = len(self.recent_attempts)
+        errors = sum(1 for _, is_error in self.recent_attempts if is_error)
+        return attempts, errors
+
     def _get_uptime_hours(self):
         """Get application uptime in hours."""
         uptime = datetime.now() - self.performance_stats['start_time']
@@ -558,7 +600,12 @@ class HealthMonitor:
         """
         if stat_name in self.performance_stats:
             self.performance_stats[stat_name] += increment
-        
+
+        if stat_name in ('images_captured', 'errors_encountered'):
+            now = datetime.now()
+            is_error = stat_name == 'errors_encountered'
+            self.recent_attempts.extend([(now, is_error)] * max(1, increment))
+
         if stat_name == 'images_captured':
             self.performance_stats['last_image_time'] = datetime.now()
     
