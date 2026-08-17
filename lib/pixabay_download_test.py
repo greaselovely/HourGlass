@@ -22,15 +22,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    import cloudscraper
+    from curl_cffi import requests as curl_requests
 except ImportError:
-    print("ERROR: cloudscraper not installed. Run: pip install cloudscraper")
-    sys.exit(1)
-
-try:
-    import requests
-except ImportError:
-    print("ERROR: requests not installed. Run: pip install requests")
+    print("ERROR: curl_cffi not installed. Run: pip install curl_cffi")
     sys.exit(1)
 
 
@@ -77,14 +71,8 @@ def print_response_info(response, step_name):
 
 
 def create_session(config):
-    """Create a cloudscraper session with proxy config."""
-    session = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'darwin',
-            'desktop': True
-        }
-    )
+    """Create a browser-impersonating curl_cffi session with proxy config."""
+    proxies = {}
 
     # Configure proxy if available
     if config and 'proxies' in config:
@@ -93,25 +81,28 @@ def create_session(config):
 
         if socks5_hostname:
             proxy_url = f"socks5h://{socks5_hostname}"
-            session.proxies = {'http': proxy_url, 'https': proxy_url}
+            proxies = {'http': proxy_url, 'https': proxy_url}
             print(f"  Using SOCKS5 proxy (hostname resolution): {socks5_hostname}")
         elif socks5:
             proxy_url = f"socks5://{socks5}"
-            session.proxies = {'http': proxy_url, 'https': proxy_url}
+            proxies = {'http': proxy_url, 'https': proxy_url}
             print(f"  Using SOCKS5 proxy: {socks5}")
         elif config['proxies'].get('http') or config['proxies'].get('https'):
-            session.proxies = {}
             if config['proxies'].get('http'):
-                session.proxies['http'] = config['proxies']['http']
+                proxies['http'] = config['proxies']['http']
             if config['proxies'].get('https'):
-                session.proxies['https'] = config['proxies']['https']
+                proxies['https'] = config['proxies']['https']
             print("  Using HTTP/HTTPS proxy")
         else:
             print("  No proxy configured")
     else:
         print("  No proxy configured")
 
-    return session
+    return curl_requests.Session(
+        impersonate="chrome",
+        proxies=proxies or None,
+        timeout=60,
+    )
 
 
 def download_iteration(config, session, iteration, audio_cache_folder):

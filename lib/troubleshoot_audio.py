@@ -94,46 +94,43 @@ def test_with_requests():
         except Exception as e:
             print(f"  Error: {e}")
 
-def test_with_cloudscraper():
-    """Test using cloudscraper to bypass Cloudflare."""
+def test_with_curl_cffi():
+    """Test using curl_cffi browser impersonation to get past Cloudflare."""
     print("\n" + "="*60)
-    print("Testing with CloudScraper")
+    print("Testing with curl_cffi impersonation")
     print("="*60)
-    
+
     try:
-        import cloudscraper
+        from curl_cffi import requests as curl_requests
     except ImportError:
-        print("CloudScraper not installed. Install with: pip install cloudscraper")
+        print("curl_cffi not installed. Install with: pip install curl_cffi")
         return
-    
-    browsers = [
-        {'browser': 'chrome', 'platform': 'linux', 'desktop': True},
-        {'browser': 'firefox', 'platform': 'linux', 'desktop': True},
-        {'browser': 'chrome', 'platform': 'darwin', 'desktop': True},
-    ]
-    
+
+    profiles = ["chrome", "chrome146", "firefox", "safari"]
+
     url = "https://pixabay.com/music/search/background%20music/"
-    
-    for browser_config in browsers:
-        print(f"\nTesting with {browser_config}:")
+
+    for profile in profiles:
+        print(f"\nTesting with impersonate={profile}:")
         try:
-            scraper = cloudscraper.create_scraper(browser=browser_config)
-            response = scraper.get(url, timeout=15)
+            session = curl_requests.Session(impersonate=profile)
+            response = session.get(url, timeout=15)
             print(f"  Status: {response.status_code}")
-            
+
             if response.status_code == 200:
                 print("  Success! This configuration works.")
                 # Check if we can find the bootstrap URL
                 if "window.__BOOTSTRAP_URL__" in response.text:
                     print("  Bootstrap URL found - full functionality available")
             elif response.status_code == 403:
-                print("  Still blocked (403)")
+                mitigated = response.headers.get('cf-mitigated')
+                print(f"  Still blocked (403){f' - cf-mitigated: {mitigated}' if mitigated else ''}")
                 # Save response for analysis
-                debug_file = f"debug_403_{browser_config['browser']}_{browser_config['platform']}.html"
+                debug_file = f"debug_403_{profile}.html"
                 with open(debug_file, 'w') as f:
                     f.write(response.text)
                 print(f"  Response saved to: {debug_file}")
-                
+
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -226,7 +223,7 @@ def main():
     # Run tests
     test_with_curl()
     test_with_requests()
-    test_with_cloudscraper()
+    test_with_curl_cffi()
     check_ip_reputation()
     suggest_solutions()
     

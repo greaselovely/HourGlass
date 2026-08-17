@@ -6,8 +6,8 @@ import os
 import re
 import json
 import shutil
-import cloudscraper
-import requests
+from curl_cffi import requests as curl_requests
+from curl_cffi.requests.exceptions import HTTPError, RequestException
 from time import sleep
 from pathlib import Path
 from random import choice
@@ -23,6 +23,17 @@ from .utils import message_processor, check_socks_proxy
 # ============================================================================
 
 SONG_HISTORY_RETENTION_DAYS = 180
+
+# Browser fingerprints curl_cffi can impersonate for Pixabay requests. These are
+# TLS/HTTP2 fingerprint profiles, not User-Agent strings - the config's
+# `user_agents` list has no effect here. Keep these current when bumping
+# curl_cffi; an old profile is what got cloudscraper blocked in the first place.
+IMPERSONATE_PROFILES = [
+    "chrome",
+    "chrome146",
+    "firefox",
+    "safari",
+]
 
 
 def load_song_history(history_file: str | Path) -> dict:
@@ -555,17 +566,8 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 message_processor(f"Waiting {delay} seconds before retry...", "info")
                 sleep(delay)
 
-            # Use cloudscraper to bypass Cloudflare
-            # It handles user agents and headers automatically
-            session = cloudscraper.create_scraper(
-                browser={
-                    'browser': 'chrome',
-                    'platform': 'darwin',
-                    'desktop': True
-                }
-            )
-
             # Configure SOCKS proxy if available in config
+            proxies = {}
             if config and 'proxies' in config:
                 socks5 = config['proxies'].get('socks5', '')
                 socks5_hostname = config['proxies'].get('socks5_hostname', '')
@@ -574,26 +576,33 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 # Format: socks5h://hostname:port or socks5://hostname:port
                 if socks5_hostname:
                     proxy_url = f"socks5h://{socks5_hostname}"
-                    session.proxies = {
-                        'http': proxy_url,
-                        'https': proxy_url
-                    }
+                    proxies = {'http': proxy_url, 'https': proxy_url}
                     message_processor(f"Using SOCKS5 proxy (with hostname resolution): {socks5_hostname}", "info")
                 elif socks5:
                     proxy_url = f"socks5://{socks5}"
-                    session.proxies = {
-                        'http': proxy_url,
-                        'https': proxy_url
-                    }
+                    proxies = {'http': proxy_url, 'https': proxy_url}
                     message_processor(f"Using SOCKS5 proxy: {socks5}", "info")
                 # Also check for regular HTTP/HTTPS proxies
                 elif config['proxies'].get('http') or config['proxies'].get('https'):
-                    session.proxies = {}
                     if config['proxies'].get('http'):
-                        session.proxies['http'] = config['proxies']['http']
+                        proxies['http'] = config['proxies']['http']
                     if config['proxies'].get('https'):
-                        session.proxies['https'] = config['proxies']['https']
+                        proxies['https'] = config['proxies']['https']
                     message_processor("Using HTTP/HTTPS proxy", "info")
+
+            # Use curl_cffi to get past Pixabay's Cloudflare challenge. A plain
+            # requests/cloudscraper session gets a 403 "cf-mitigated: challenge"
+            # no matter what User-Agent it sends, because the block is on the TLS
+            # and HTTP/2 fingerprint, not the header. curl_cffi impersonates a
+            # real browser at that level. Rotate the profile per attempt so we
+            # don't hammer Pixabay with one identical fingerprint.
+            impersonate = choice(IMPERSONATE_PROFILES)
+            message_processor(f"Impersonating: {impersonate}", "info")
+            session = curl_requests.Session(
+                impersonate=impersonate,
+                proxies=proxies or None,
+                timeout=60,
+            )
 
             # Step 1: Get page 1 HTML to extract bootstrap URL and total pages
             # Get base URL and search term from config if available
@@ -781,12 +790,18 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 message_processor(f"Removed unusable file: {audio_name}")
                 continue  # Try downloading again
 
-        except requests.HTTPError as e:
+        except HTTPError as e:
             if e.response.status_code == 403:
-                message_processor(f"Access forbidden (403). Pixabay may be rate limiting. Retrying...", "warning")
+                if e.response.headers.get('cf-mitigated') == 'challenge':
+                    message_processor(
+                        "Blocked by a Cloudflare challenge (403). The impersonation "
+                        "profile is stale - try upgrading curl_cffi. Retrying...",
+                        "warning")
+                else:
+                    message_processor("Access forbidden (403). Pixabay may be rate limiting. Retrying...", "warning")
             else:
                 message_processor(f"HTTP error occurred:\n[!]\t{e}", "error")
-        except requests.RequestException as e:
+        except RequestException as e:
             message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
         except (KeyError, ValueError) as e:
             message_processor(f"Error parsing response data: {e}", "error")
