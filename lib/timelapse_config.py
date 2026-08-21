@@ -10,7 +10,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.8  # daily_fact removed - TTS intro is the project title only
+CURRENT_VERSION = 2.9  # health section added - connection and rate-limit thresholds
 
 def setup_logging(config):
     """
@@ -496,6 +496,11 @@ def load_config(config_path=None):
                 "parallel_downloads": 3,
                 "cache_images": True
             },
+            "health": {
+                "capture_connections_warning": 5,
+                "capture_connections_critical": 10,
+                "rate_limit_count": 5
+            },
             "output_symbols": {
                 "GREEN_CIRCLE": "\U0001F7E2",
                 "RED_CIRCLE": "\U0001F534"
@@ -599,6 +604,12 @@ def load_config(config_path=None):
             config_updates.append(
                 "Daily narration segments removed - TTS intro is now the "
                 "project title and date only")
+
+        # New alerting thresholds change what you get paged about, so say so.
+        if 'health' not in original:
+            config_updates.append(
+                "Health alerts added - warns when connections to the capture host "
+                "or 429/503 responses exceed thresholds")
 
         # Always sync user agents from defaults so they don't go stale
         default_config = create_default_config()

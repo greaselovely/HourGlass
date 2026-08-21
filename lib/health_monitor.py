@@ -1,10 +1,12 @@
 # health_monitor.py
 
 import time
+import socket
 import psutil
 import requests
 import logging
 from typing import Dict, List
+from urllib.parse import urlparse
 from collections import deque
 from datetime import datetime, timedelta
 from threading import Thread, Event
@@ -60,6 +62,16 @@ class HealthMonitor:
             'cpu_percent': 80.0,            # Warn if more than 80% used over time
             'error_rate_percent': 10.0,      # Warn if error rate > 10%
         }
+
+        # Connection/rate-limit thresholds are config-driven: they are tuned against a
+        # measured per-project baseline (VLA idles at a single reused keepalive socket),
+        # so a sensible number here is not universal the way "90% disk" is.
+        health_cfg = self.config.get('health', {})
+        self.thresholds.update({
+            'capture_connections_warning': health_cfg.get('capture_connections_warning', 5),
+            'capture_connections_critical': health_cfg.get('capture_connections_critical', 10),
+            'rate_limit_count': health_cfg.get('rate_limit_count', 5),
+        })
         
         # Health history
         self.health_history = []
@@ -98,6 +110,18 @@ class HealthMonitor:
         self.recent_attempts = deque()
         self.error_window_seconds = 1800  # 30 minutes
         self.min_window_attempts = 5      # need a real sample before judging
+
+        # Rolling window of 429/503 responses from the capture host. The capture path
+        # treats every non-200 identically, so without this a rate-limit response is
+        # indistinguishable from a 404 in the logs.
+        self.recent_rate_limits = deque()
+        self.rate_limit_window_seconds = 1800  # 30 minutes, same window as error_rate
+
+        # Resolved IPs of the capture host, cached so the check does not do a DNS
+        # lookup on every pass. Refreshed on the interval below.
+        self._capture_host_ips = set()
+        self._capture_ips_resolved_at = None
+        self._capture_ips_ttl_seconds = 1800
 
         # Sleep status tracking
         self.is_sleeping = False
@@ -183,6 +207,8 @@ class HealthMonitor:
         metrics.extend(self._check_network_connectivity())
         metrics.extend(self._check_process_health())
         metrics.extend(self._check_capture_performance())
+        metrics.extend(self._check_connection_count())
+        metrics.extend(self._check_rate_limiting())
         
         # Determine overall status
         if any(m.status == 'critical' for m in metrics):
@@ -410,6 +436,10 @@ class HealthMonitor:
                         # If GET also fails, just note that HEAD isn't supported
                         status = 'info'
                         message = f"{name} doesn't support HEAD requests (405)"
+                elif response.status_code in (429, 503):
+                    status = 'warning'
+                    message = f"{name} rate limited (status {response.status_code})"
+                    self.record_rate_limit(response.status_code)
                 else:
                     status = 'warning'
                     message = f"{name} returned status {response.status_code}"
@@ -511,6 +541,143 @@ class HealthMonitor:
 
         return metrics
     
+    def _get_capture_host_ips(self):
+        """Resolve the capture host(s) to a set of IPs, cached with a TTL.
+
+        Both IMAGE_URL and WEBPAGE are resolved because they can be different hosts,
+        and a single hostname can return several A records (public.nrao.edu answers
+        with two), all of which count as the same origin.
+        """
+        now = datetime.now()
+        if (self._capture_ips_resolved_at is not None
+                and (now - self._capture_ips_resolved_at).total_seconds() < self._capture_ips_ttl_seconds):
+            return self._capture_host_ips
+
+        urls = self.config.get('urls', {})
+        hostnames = set()
+        for url in (urls.get('IMAGE_URL'), urls.get('WEBPAGE')):
+            if not url:
+                continue
+            hostname = urlparse(url).hostname
+            if hostname:
+                hostnames.add(hostname)
+
+        ips = set()
+        for hostname in hostnames:
+            try:
+                _, _, addresses = socket.gethostbyname_ex(hostname)
+                ips.update(addresses)
+            except Exception as e:
+                logging.debug(f"Could not resolve capture host {hostname}: {e}")
+
+        # Keep the previous answer on a total resolution failure rather than reporting
+        # zero connections, which would look like a clean bill of health.
+        if ips:
+            self._capture_host_ips = ips
+            self._capture_ips_resolved_at = now
+
+        return self._capture_host_ips
+
+    def _check_connection_count(self) -> List[HealthMetric]:
+        """Check how many TCP connections this process holds open to the capture host.
+
+        Scoped to the capture host on purpose: counting every connection would fire on
+        Pixabay downloads and YouTube uploads, which would force the threshold so high
+        it could no longer detect the thing it exists to detect.
+        """
+        metrics = []
+
+        try:
+            capture_ips = self._get_capture_host_ips()
+            if not capture_ips:
+                return metrics
+
+            connections = psutil.Process().net_connections(kind='tcp')
+            to_capture = [c for c in connections if c.raddr and c.raddr.ip in capture_ips]
+            count = len(to_capture)
+            close_wait = sum(1 for c in to_capture if c.status == 'CLOSE_WAIT')
+
+            # A climbing CLOSE_WAIT count is the signature of responses that were never
+            # closed, so it is worth naming in the message even when the total is fine.
+            detail = f"({count} open, {close_wait} CLOSE_WAIT)"
+
+            if count > self.thresholds['capture_connections_critical']:
+                status = 'critical'
+                message = f"Critical: {count} connections to capture host {detail}"
+            elif count > self.thresholds['capture_connections_warning']:
+                status = 'warning'
+                message = f"Warning: elevated connections to capture host {detail}"
+            else:
+                status = 'healthy'
+                message = f"Capture host connections normal {detail}"
+
+            metrics.append(HealthMetric(
+                name='capture_host_connections',
+                value=count,
+                threshold=self.thresholds['capture_connections_warning'],
+                status=status,
+                message=message,
+                timestamp=datetime.now(),
+                unit='connections'
+            ))
+
+        except psutil.AccessDenied:
+            # Some platforms refuse socket introspection. That is a missing measurement,
+            # not a fault worth paging about.
+            logging.debug("Connection check skipped: psutil denied access to socket table")
+        except Exception as e:
+            metrics.append(HealthMetric(
+                name='connection_check',
+                value=0,
+                threshold=0,
+                status='warning',
+                message=f"Failed to check connections: {e}",
+                timestamp=datetime.now()
+            ))
+
+        return metrics
+
+    def _check_rate_limiting(self) -> List[HealthMetric]:
+        """Check how many 429/503 responses the capture host returned recently."""
+        metrics = []
+
+        if self.is_sleeping:
+            return metrics
+
+        try:
+            count = self._recent_rate_limit_count()
+            window_minutes = self.rate_limit_window_seconds / 60
+
+            if count > self.thresholds['rate_limit_count']:
+                status = 'warning'
+                message = (f"Being rate limited: {count} 429/503 responses "
+                           f"in last {window_minutes:.0f}m")
+            else:
+                status = 'healthy'
+                message = f"No significant rate limiting ({count} in last {window_minutes:.0f}m)"
+
+            metrics.append(HealthMetric(
+                name='rate_limit_responses',
+                value=count,
+                threshold=self.thresholds['rate_limit_count'],
+                status=status,
+                message=message,
+                timestamp=datetime.now(),
+                unit='responses'
+            ))
+
+        except Exception as e:
+            metrics.append(HealthMetric(
+                name='rate_limit_check',
+                value=0,
+                threshold=0,
+                status='warning',
+                message=f"Failed to check rate limiting: {e}",
+                timestamp=datetime.now()
+            ))
+
+        return metrics
+
     def _process_health_report(self, health_report):
         """Process health report and trigger alerts if needed."""
         # Add to history
@@ -585,6 +752,13 @@ class HealthMonitor:
         errors = sum(1 for _, is_error in self.recent_attempts if is_error)
         return attempts, errors
 
+    def _recent_rate_limit_count(self):
+        """Prune the rate-limit window and return how many remain within it."""
+        cutoff = datetime.now() - timedelta(seconds=self.rate_limit_window_seconds)
+        while self.recent_rate_limits and self.recent_rate_limits[0] < cutoff:
+            self.recent_rate_limits.popleft()
+        return len(self.recent_rate_limits)
+
     def _get_uptime_hours(self):
         """Get application uptime in hours."""
         uptime = datetime.now() - self.performance_stats['start_time']
@@ -608,6 +782,16 @@ class HealthMonitor:
 
         if stat_name == 'images_captured':
             self.performance_stats['last_image_time'] = datetime.now()
+
+    def record_rate_limit(self, status_code):
+        """
+        Record a rate-limit response from the capture host.
+
+        Args:
+            status_code (int): The HTTP status that triggered this (429 or 503)
+        """
+        self.recent_rate_limits.append(datetime.now())
+        logging.warning(f"Capture host returned {status_code} (rate limited)")
     
 
 def create_health_monitor(config, check_interval=300):

@@ -187,6 +187,11 @@ class ImageDownloader:
 
                     if r is None or r.status_code != 200:
                         message_processor(f"{RED_CIRCLE} Code: {r.status_code if r else 'None'} - Request failed", "error")
+                        # Separate rate limiting from ordinary failures so the health
+                        # monitor can tell "the origin is throttling us" from "the
+                        # origin is broken" — every non-200 looks alike otherwise.
+                        if r is not None and r.status_code in (429, 503) and self.health_monitor:
+                            self.health_monitor.record_rate_limit(r.status_code)
                         self.consecutive_failures += 1
                         return None, None
 
