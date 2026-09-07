@@ -11,6 +11,7 @@ from curl_cffi.requests.exceptions import HTTPError, RequestException
 from time import sleep
 from pathlib import Path
 from random import choice
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from moviepy.editor import AudioFileClip, concatenate_audioclips
 from moviepy.audio.fx.all import audio_loop
@@ -525,6 +526,50 @@ def get_cache_stats(cache_folder):
         return {'count': 0, 'total_size_mb': 0, 'oldest_date': None, 'newest_date': None}
 
 
+def _music_filters(config):
+    """
+    Read song-quality filters from the music config section.
+
+    Returns a dict of the thresholds used to reject unsuitable Pixabay tracks
+    before we spend a download on them.
+    """
+    music = (config or {}).get('music', {})
+    return {
+        'min_duration': music.get('min_duration', 90),
+        'min_rating': music.get('min_rating', 6.0),
+        'exclude_ai': music.get('exclude_ai_generated', True),
+    }
+
+
+def _rejection_reason(song, filters):
+    """
+    Check one Pixabay catalog entry against the quality filters.
+
+    Pixabay's bootstrap JSON carries duration, a 0-10 community `rating`, and an
+    `isAiGenerated` flag, so we can throw out short/bad tracks from the metadata
+    alone instead of downloading them first. Short songs are the main offender:
+    roughly a quarter of the catalog is under 90 seconds, which makes the video
+    cut to a new track every few seconds.
+
+    Note `isLowQuality` is NOT used - it is set on ~85% of the catalog and does
+    not track anything we care about.
+
+    Returns a short reason string if the song should be skipped, else None.
+    """
+    duration = song.get('duration') or 0
+    if duration < filters['min_duration']:
+        return f"{duration}s < {filters['min_duration']}s"
+
+    rating = song.get('rating')
+    if rating is not None and rating < filters['min_rating']:
+        return f"rating {rating} < {filters['min_rating']}"
+
+    if filters['exclude_ai'] and song.get('isAiGenerated'):
+        return "AI-generated"
+
+    return None
+
+
 def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None, song_history=None):
     """
     Downloads a random song from Pixabay and tests its usability.
@@ -610,11 +655,23 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 base_url = config['music'].get('pixabay_base_url', 'https://pixabay.com/music/search/')
                 search_terms = config['music'].get('search_terms', ['no copyright music'])
                 search_term = search_terms[0] if search_terms else 'no copyright music'
+                genres = config['music'].get('genres') or []
             else:
                 base_url = 'https://pixabay.com/music/search/'
                 search_term = 'no copyright music'
+                genres = []
 
-            page1_url = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/"
+            # Pixabay supports a server-side `genre=` filter that composes with
+            # `pagi=`, so picking a genre narrows the catalog before we page into
+            # it rather than us throwing away most of a page. Rotate through the
+            # configured genres so the soundtrack doesn't get monotonous.
+            genre = choice(genres) if genres else None
+            genre_qs = f"genre={quote(genre)}" if genre else ""
+            if genre:
+                message_processor(f"Filtering to genre: {genre}", "info")
+
+            search_path = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/"
+            page1_url = f"{search_path}?{genre_qs}" if genre_qs else search_path
 
             message_processor(f"Fetching Pixabay music catalog for '{search_term}' (attempt {attempt + 1})", "info")
             message_processor(f"URL: {page1_url}", "info")
@@ -669,7 +726,9 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
 
             # Step 4: If not page 1, fetch the selected page
             if selected_page > 1:
-                page_url = f"{base_url.rstrip('/')}/{search_term.replace(' ', '%20')}/?pagi={selected_page}"
+                page_url = f"{search_path}?pagi={selected_page}"
+                if genre_qs:
+                    page_url += f"&{genre_qs}"
                 message_processor(f"Fetching page {selected_page} of {total_pages}", "info")
                 message_processor(f"URL: {page_url}", "info")
 
@@ -720,15 +779,25 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 message_processor("No songs found in response.", "error")
                 continue
 
-            # Filter out songs that have been used within retention period
+            # Filter out songs used within the retention period, then drop the
+            # ones that fail the quality bar. Both checks run off the catalog
+            # metadata, so a rejected song costs us nothing but a dict lookup.
+            filters = _music_filters(config)
             available_songs = []
             skipped_count = 0
+            rejected = []
             for song in results:
                 song_src = song.get('sources', {}).get('src')
-                if song_src and not is_song_in_history(song_history, song_src):
-                    available_songs.append(song)
-                elif song_src:
+                if not song_src:
+                    continue
+                if is_song_in_history(song_history, song_src):
                     skipped_count += 1
+                    continue
+                reason = _rejection_reason(song, filters)
+                if reason:
+                    rejected.append(reason)
+                    continue
+                available_songs.append(song)
 
             if skipped_count > 0:
                 message_processor(
@@ -736,9 +805,18 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                     "info"
                 )
 
+            if rejected:
+                short = sum(1 for r in rejected if r.endswith(f"< {filters['min_duration']}s"))
+                message_processor(
+                    f"Rejected {len(rejected)} songs on quality filters "
+                    f"({short} too short, min {filters['min_duration']}s)",
+                    "info"
+                )
+
             if not available_songs:
                 message_processor(
-                    f"All {len(results)} songs on this page have been used recently. Trying another page...",
+                    f"No songs on this page passed the history and quality filters. "
+                    f"Trying another page...",
                     "warning"
                 )
                 continue  # Try another attempt (which will select a different page)
@@ -781,6 +859,16 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 with AudioFileClip(full_audio_path) as audio_clip:
                     # If we can read the duration, the file is likely usable
                     actual_duration = audio_clip.duration
+                # Trust the file over the catalog: if the real duration comes in
+                # under the bar, drop it rather than let a short track through.
+                if actual_duration < filters['min_duration']:
+                    message_processor(
+                        f"Discarding {audio_name}: actual duration {actual_duration:.1f}s "
+                        f"is under the {filters['min_duration']}s minimum",
+                        "warning")
+                    os.remove(full_audio_path)
+                    continue
+
                 message_processor(f"Audio file verified. Duration: {actual_duration:.2f} seconds")
                 # Return path, duration in ms, and source URL for history tracking
                 return full_audio_path, actual_duration * 1000, song_src

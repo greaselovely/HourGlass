@@ -363,13 +363,13 @@ def create_initial_config(existing_config=None, project_name=None):
         config["music"]["pixabay_api_key"] = input("Pixabay API key (optional): ").strip()
         # Always use 'no copyright music' as the search term
         config["music"]["search_terms"] = ["no copyright music"]
-        config["music"]["min_duration"] = 60
+        config["music"]["min_duration"] = 90
     else:
         config["music"]["enabled"] = False
         config["music"]["pixabay_base_url"] = "https://pixabay.com/music/search/"
         config["music"]["pixabay_api_key"] = ""
         config["music"]["search_terms"] = ["no copyright music"]
-        config["music"]["min_duration"] = 60
+        config["music"]["min_duration"] = 90
     
     # Proxy settings
     print("\n[7/8] Proxy Configuration (optional)")

@@ -10,7 +10,7 @@ import logging.handlers
 from pathlib import Path
 from datetime import datetime, timedelta
 
-CURRENT_VERSION = 2.9  # health section added - connection and rate-limit thresholds
+CURRENT_VERSION = 3.0  # music quality filters - min duration, rating, genre
 
 def setup_logging(config):
     """
@@ -475,7 +475,22 @@ def load_config(config_path=None):
                 "pixabay_api_key": "",
                 "pixabay_base_url": "https://pixabay.com/music/search/",
                 "search_terms": ["no copyright music"],
-                "min_duration": 60,
+                # Songs shorter than this are skipped. Roughly a quarter of the
+                # Pixabay catalog is under 90s, and those make the video cut to a
+                # new track every few seconds.
+                "min_duration": 90,
+                # Pixabay's 0-10 community rating. The floor is 5.0 and a third
+                # of the catalog sits at 5.0-5.5, so this cuts the bottom third
+                # while still leaving ~40% of any given page usable.
+                # Note ratings are genre-relative: if you ever set `genres`,
+                # check the supply first - lofi runs a full point lower and 6.0
+                # rejects ~93% of it.
+                "min_rating": 6.0,
+                "exclude_ai_generated": True,
+                # Optional Pixabay genre slugs to restrict the search to, e.g.
+                # ["ambient", "lofi", "cinematic"]. Empty means the whole catalog.
+                # One is picked at random per download.
+                "genres": [],
                 "cache_max_files": 50,
                 "tts_intro": {
                     "enabled": False,
@@ -604,6 +619,17 @@ def load_config(config_path=None):
             config_updates.append(
                 "Daily narration segments removed - TTS intro is now the "
                 "project title and date only")
+
+        # min_duration sat in the config at 60 but was never read by anything.
+        # Now that it gates song selection, lift the stale default to 90s -
+        # short tracks were cutting over every few seconds mid-video. Only the
+        # old default is touched, so a deliberate setting is left alone.
+        music = config.get('music', {})
+        if music.get('min_duration') == 60 and original.get('music', {}).get('min_duration') == 60:
+            music['min_duration'] = 90
+            config_updates.append(
+                "Music min_duration raised 60s -> 90s and is now enforced - "
+                "short songs were causing rapid track changes")
 
         # New alerting thresholds change what you get paged about, so say so.
         if 'health' not in original:
