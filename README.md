@@ -14,7 +14,7 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 - **Audio Track Addition:** Adds dynamic soundtracks to time-lapse videos using Pixabay
 - **Even Audio Distribution:** Songs split evenly across video with 5-second crossfades
 - **Song History Tracking:** 180-day history prevents song repetition across videos
-- **TTS Intro:** Optional spoken intro announcing the project and date, with random voice selection from Edge TTS (free) and Google Cloud TTS
+- **TTS Intro:** Optional spoken intro announcing the project and date, with random voice selection from Google Cloud TTS
 
 ### Enhanced Capabilities
 - **Robust Error Handling:** Exponential backoff and automatic session recovery
@@ -41,7 +41,6 @@ HourGlass is a flexible and robust webcam timelapse system that automatically do
 
 ## Optional Setup
 - **Google Cloud TTS:** For high-quality text-to-speech intros. See [GOOGLE_TTS_SETUP.md](GOOGLE_TTS_SETUP.md) for setup instructions.
-- **Edge TTS:** Free alternative that works out of the box with no API key required. The system randomly selects between Edge and Google (if configured) for voice variety.
 
 ## Quick Start
 

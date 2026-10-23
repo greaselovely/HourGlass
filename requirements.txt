@@ -15,7 +15,6 @@ psutil==7.0.0
 Requests>=2.33.0
 python-dateutil>=2.8.0
 wurlitzer==3.0.3
-edge-tts
 Requests[socks]>=2.33.0
 
 # Transitive pins (security fixes)

@@ -29,10 +29,10 @@ SONG_HISTORY_RETENTION_DAYS = 180
 # TLS/HTTP2 fingerprint profiles, not User-Agent strings - the config's
 # `user_agents` list has no effect here. Keep these current when bumping
 # curl_cffi; an old profile is what got cloudscraper blocked in the first place.
+# firefox was dropped 2026-10: Cloudflare challenged it on nearly every request.
 IMPERSONATE_PROFILES = [
     "chrome",
     "chrome146",
-    "firefox",
     "safari",
 ]
 
@@ -711,18 +711,28 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                     f.write(r.text)
                 message_processor(f"Saved JSON to: {json_file}", "info")
 
-            r.raise_for_status()
-
-            initial_data = r.json()
-            total_pages = initial_data.get('page', {}).get('pages', 1)
-            message_processor(f"Found {total_pages} pages of music available", "info")
-
-            # Step 3: Select a random page.
             # Although the catalog reports far more pages, only the first 300 return
             # usable results; higher pages resolve back to page 1. Cap the random
             # selection at 300 so we don't keep landing on pages that repeat page 1.
             MAX_REACHABLE_PAGE = 300
-            selected_page = choice(range(1, min(total_pages + 1, MAX_REACHABLE_PAGE + 1)))
+
+            # Page 1's bootstrap only gives us the page count, so a bad one isn't
+            # fatal. Pixabay sometimes serves page-1 HTML pointing at a bootstrap
+            # JSON that 404s all day (2026-10-21) - skip it and page in blind.
+            if r.ok:
+                initial_data = r.json()
+                total_pages = initial_data.get('page', {}).get('pages', 1)
+                message_processor(f"Found {total_pages} pages of music available", "info")
+                first_page = 1
+            else:
+                message_processor(
+                    f"Catalog metadata unavailable ({r.status_code}), picking a page blind", "warning")
+                initial_data = None
+                total_pages = MAX_REACHABLE_PAGE
+                first_page = 2
+
+            # Step 3: Select a random page.
+            selected_page = choice(range(first_page, min(total_pages + 1, MAX_REACHABLE_PAGE + 1)))
 
             # Step 4: If not page 1, fetch the selected page
             if selected_page > 1:
@@ -768,9 +778,12 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                     r.raise_for_status()
                     page_data = r.json()
                     results = page_data.get('page', {}).get('results', [])
-                else:
+                elif initial_data:
                     message_processor(f"Could not find bootstrap URL for page {selected_page}, using page 1", "warning")
                     results = initial_data.get('page', {}).get('results', [])
+                else:
+                    message_processor(f"Could not find bootstrap URL for page {selected_page}", "error")
+                    continue
             else:
                 results = initial_data.get('page', {}).get('results', [])
                 message_processor("Using page 1", "info")
@@ -888,7 +901,9 @@ def single_song_download(AUDIO_FOLDER, max_attempts=3, debug=False, config=None,
                 else:
                     message_processor("Access forbidden (403). Pixabay may be rate limiting. Retrying...", "warning")
             else:
-                message_processor(f"HTTP error occurred:\n[!]\t{e}", "error")
+                message_processor(
+                    f"HTTP error occurred ({e.response.status_code} on {e.response.url}):\n[!]\t{e}",
+                    "error")
         except RequestException as e:
             message_processor(f"An error occurred during download:\n[!]\t{e}", "error")
         except (KeyError, ValueError) as e:
@@ -1110,9 +1125,8 @@ def create_tts_intro(
     pause_seconds: float = 0.0
 ) -> tuple[str | None, float | None]:
     """
-    Creates a TTS (Text-to-Speech) audio file with random engine and voice.
+    Creates a TTS (Text-to-Speech) audio file using Google Cloud TTS.
 
-    Randomly selects between Edge TTS (free) and Google Cloud TTS (if configured).
     Voice is randomly selected from a pool for variety across videos.
 
     Args:
@@ -1142,24 +1156,17 @@ def create_tts_intro(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Randomly choose between Edge and Google TTS, and randomize voices
+    # Randomize the voice for variety across videos
     import random
     script_dir = Path(__file__).parent.parent
     credentials_path = script_dir / 'tts.json'
 
-    # Voice pools for each engine — current-generation voices only.
-    # The older Edge voices (Aria/Guy/Jenny) and Google's Neural2 tier are
-    # noticeably robotic; the ones below are the newest, most natural tiers.
-    edge_voices = [
-        'en-US-AndrewMultilingualNeural',  # Male, warm
-        'en-US-AvaMultilingualNeural',     # Female, expressive
-        'en-US-BrianMultilingualNeural',   # Male, casual
-        'en-US-EmmaMultilingualNeural',    # Female, conversational
-        'en-US-AndrewNeural',
-        'en-US-AvaNeural',
-        'en-US-BrianNeural',
-        'en-US-EmmaNeural',
-    ]
+    if not credentials_path.exists():
+        message_processor("Google TTS: tts.json not found - no voice intro will be added",
+                          "error", notify=True)
+        return (None, None)
+
+    # Chirp3-HD is Google's newest, most natural tier; Neural2 sounds robotic.
     google_voices = [
         'en-US-Chirp3-HD-Achernar',   # Female
         'en-US-Chirp3-HD-Charon',     # Male
@@ -1169,31 +1176,17 @@ def create_tts_intro(
         'en-US-Chirp3-HD-Fenrir',     # Male
     ]
 
-    # Check if Google is available (tts.json exists)
-    google_available = credentials_path.exists()
-
-    # Pick engine randomly (Edge always available, Google only if configured)
-    if google_available:
-        use_google = random.choice([True, False])
-    else:
-        use_google = False
-
-    # Ordered (engine, voice) attempts. Whichever engine is chosen first gets its
-    # voices tried before falling back to the other engine, and every segment of a
-    # given attempt uses that one voice so the narration doesn't switch mid-intro.
-    edge_attempts = [('edge', v) for v in random.sample(edge_voices, min(3, len(edge_voices)))]
-    google_attempts = ([('google', v) for v in random.sample(google_voices, min(2, len(google_voices)))]
-                       if google_available else [])
-    attempts = google_attempts + edge_attempts if use_google else edge_attempts + google_attempts
+    # Every segment of a given attempt uses the same voice so the narration
+    # doesn't switch mid-intro.
+    attempts = random.sample(google_voices, 2)
 
     result = (None, None)
 
-    for engine, voice in attempts:
-        render = _create_tts_google if engine == 'google' else _create_tts_edge
+    for voice in attempts:
 
         # Single segment: render straight to the destination, as before.
         if len(segments) == 1:
-            result = render(segments[0], output_path, voice, rate)
+            result = _create_tts_google(segments[0], output_path, voice, rate)
             if result[0] is not None:
                 return result
             continue
@@ -1202,7 +1195,7 @@ def create_tts_intro(
         part_paths, rendered_all = [], True
         for i, segment in enumerate(segments):
             part = output_path.with_name(f"{output_path.stem}_part{i}{output_path.suffix}")
-            if render(segment, part, voice, rate)[0] is None:
+            if _create_tts_google(segment, part, voice, rate)[0] is None:
                 rendered_all = False
                 break
             part_paths.append(part)
@@ -1226,95 +1219,6 @@ def create_tts_intro(
     return (None, None)
 
 
-def _create_tts_with_retry(
-    text: str,
-    output_path: Path,
-    voices: list,
-    rate: int,
-    max_retries: int = 3,
-    retry_delay: float = 2.0
-) -> tuple[str | None, float | None]:
-    """
-    Attempts Edge TTS with retries, trying different voices on failure.
-
-    Args:
-        text: Text to synthesize
-        output_path: Where to save the audio
-        voices: List of voice names to try
-        rate: Speech rate (WPM)
-        max_retries: Maximum number of retry attempts
-        retry_delay: Seconds to wait between retries
-
-    Returns:
-        tuple: (audio_path, duration_ms) or (None, None) if all attempts fail
-    """
-    import time
-    import random
-
-    available_voices = voices.copy()
-    random.shuffle(available_voices)  # Randomize order for variety
-
-    for attempt in range(max_retries):
-        # Pick a different voice for each attempt if possible
-        voice = available_voices[attempt % len(available_voices)]
-
-        message_processor(f"TTS attempt {attempt + 1}/{max_retries} with voice: {voice}", "info")
-
-        result = _create_tts_edge(text, output_path, voice, rate)
-        if result[0] is not None:
-            return result
-
-        if attempt < max_retries - 1:
-            message_processor(f"TTS attempt failed, waiting {retry_delay}s before retry...", "warning")
-            time.sleep(retry_delay)
-            # Increase delay for subsequent retries (exponential backoff)
-            retry_delay = min(retry_delay * 1.5, 10.0)
-
-    return (None, None)
-
-
-def _create_tts_edge(text: str, output_path: Path, voice: str, rate: int) -> tuple[str | None, float | None]:
-    """Create TTS using Microsoft Edge TTS (free, no API key)."""
-    try:
-        import asyncio
-        import edge_tts
-
-        # Convert rate (WPM) to edge-tts rate string
-        # edge-tts uses percentage: +0% is normal, +50% is faster, -50% is slower
-        rate_percent = int((rate - 150) / 150 * 100)
-        rate_str = f"{rate_percent:+d}%"
-
-        message_processor(f"Using Edge TTS voice: {voice} (rate: {rate_str})", "info")
-
-        async def generate():
-            communicate = edge_tts.Communicate(text, voice, rate=rate_str)
-            await communicate.save(str(output_path))
-
-        # Run the async function
-        asyncio.run(generate())
-
-        # Verify and get duration
-        if output_path.exists():
-            try:
-                with AudioFileClip(str(output_path)) as audio_clip:
-                    duration_sec = audio_clip.duration
-                message_processor(f"TTS intro created: {duration_sec:.1f}s", "info")
-                return str(output_path), duration_sec * 1000
-            except Exception as e:
-                message_processor(f"Error verifying TTS file: {e}", "error")
-                return None, None
-        else:
-            message_processor("TTS file was not created", "error")
-            return None, None
-
-    except ImportError:
-        message_processor("edge-tts not installed. Run: pip install edge-tts", "error")
-        return None, None
-    except Exception as e:
-        message_processor(f"Error creating Edge TTS: {e}", "error")
-        return None, None
-
-
 def _create_tts_google(text: str, output_path: Path, voice: str, rate: int) -> tuple[str | None, float | None]:
     """Create TTS using Google Cloud TTS (requires tts.json credentials)."""
     try:
@@ -1325,8 +1229,8 @@ def _create_tts_google(text: str, output_path: Path, voice: str, rate: int) -> t
         credentials_path = script_dir / 'tts.json'
 
         if not credentials_path.exists():
-            message_processor("Google TTS: tts.json not found. Falling back to Edge TTS.", "warning")
-            return _create_tts_edge(text, output_path, 'en-US-AriaNeural', rate)
+            message_processor("Google TTS: tts.json not found", "warning")
+            return None, None
 
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(credentials_path)
 

@@ -494,8 +494,6 @@ def load_config(config_path=None):
                 "cache_max_files": 50,
                 "tts_intro": {
                     "enabled": False,
-                    "engine": "edge",
-                    "voice": "en-US-AvaMultilingualNeural",
                     "rate": 150,
                     "volume": 0.9
                 }
@@ -747,7 +745,7 @@ MUSIC_SEARCH_TERMS = ['no copyright music']
 MUSIC_MIN_DURATION = 60
 AUDIO_CACHE_MAX_FILES = 50
 
-# TTS Intro settings (randomly selects engine and voice for variety)
+# TTS Intro settings (Google Cloud TTS, random voice for variety)
 TTS_INTRO_ENABLED = True
 TTS_INTRO_RATE = 150
 TTS_INTRO_VOLUME = 0.9
